@@ -1,0 +1,121 @@
+@import url('https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800;900&family=DM+Sans:wght@400;500;600;700&display=swap');
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body, #root { height: 100%; }
+body {
+  font-family: 'DM Sans', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+}
+::-webkit-scrollbar { display: none; }
+
+@keyframes fadeUp    { from { opacity:0; transform:translateY(10px); } to { opacity:1; transform:none; } }
+@keyframes scaleIn   { from { opacity:0; transform:scale(0.95); }      to { opacity:1; transform:scale(1); } }
+@keyframes float     { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-6px); } }
+@keyframes pulse     { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.4); } }
+@keyframes spin      { from { transform:rotate(0deg); } to { transform:rotate(360deg); } }
+@keyframes shimmer   { 0% { background-position:-400px 0; } 100% { background-position:400px 0; } }
+
+/* ── Layout ── */
+.ob-app-layout {
+  display: flex;
+  min-height: 100vh;
+  width: 100%;
+}
+.ob-sidebar {
+  width: 240px;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow-y: auto;
+}
+.ob-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.ob-app-frame {
+  flex: 1;
+  overflow-y: auto;
+  position: relative;
+}
+.ob-app-frame-inner {
+  max-width: 560px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+/* ── Topbars ── */
+.ob-desktop-topbar {
+  padding: 12px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  backdrop-filter: blur(12px);
+}
+.ob-mobile-topbar {
+  display: none;
+  padding: 14px 16px;
+  justify-content: space-between;
+  align-items: center;
+}
+.ob-mobile-spacer { display: none; height: 70px; }
+.ob-mobile-bottomnav { display: none; }
+
+/* ── Sidebar button ── */
+.ob-sidebar-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: none;
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  text-align: left;
+  transition: all 0.18s;
+}
+.ob-sidebar-btn:hover { opacity: 0.85; }
+
+/* ── Mobile ── */
+@media (max-width: 680px) {
+  .ob-sidebar              { display: none; }
+  .ob-desktop-topbar       { display: none; }
+  .ob-mobile-topbar        { display: flex; }
+  .ob-mobile-spacer        { display: block; }
+  .ob-sidebar-btn-text     { display: none; }
+  .ob-mobile-bottomnav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    z-index: 500;
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .ob-nav-btn {
+    flex: 1;
+    padding: 10px 4px 12px;
+    background: none;
+    border: none;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: color 0.15s;
+  }
+  .ob-nav-btn .nav-icon  { font-size: 22px; }
+  .ob-nav-btn .nav-label { font-size: 10px; font-weight: 500; }
+  .ob-nav-btn.active .nav-label { font-weight: 700; }
+}
