@@ -8,8 +8,7 @@ import AdminDashboard from './pages/AdminDashboard';
 import { MOCK_RUNNERS } from './data';
 import { ToastProvider } from './components/Toast';
 import { InstallPrompt } from './components/InstallPrompt';
-import { ToastProvider } from './components/Toast';
-import { InstallPrompt } from './components/InstallPrompt';
+
 
 function AppShell() {
   const { theme: T, isDark, toggleTheme } = useTheme();
