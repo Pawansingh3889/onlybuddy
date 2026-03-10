@@ -11,7 +11,7 @@ module.exports = async (req, res) => {
   try {
     const { amount, jobId, customerEmail } = req.body;
 
-    if (!amount || amount < 100) {
+    if (!amount || amount < 1) {
       return res.status(400).json({ error: 'Invalid amount' });
     }
 
