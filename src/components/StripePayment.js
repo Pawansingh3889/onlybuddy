@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { showToast } from './Toast';
 
@@ -18,58 +18,60 @@ function loadStripe() {
 
 export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCancel }) {
   const { theme: T } = useTheme();
+  const mountRef        = useRef(null);
   const [stripe, setStripe]         = useState(null);
   const [elements, setElements]     = useState(null);
-  const [loading, setLoading]       = useState(true);
   const [processing, setProcessing] = useState(false);
   const [error, setError]           = useState(null);
   const [noKey, setNoKey]           = useState(false);
+  const [ready, setReady]           = useState(false);
 
   useEffect(() => {
+    if (!mountRef.current) return;
+
     loadStripe().then(async (str) => {
-      // Get payment intent from our serverless function
       const res = await fetch('/api/create-payment-intent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ amount, jobId, customerEmail }),
       });
-      const { clientSecret, error } = await res.json();
-      if (error) throw new Error(error);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
 
-      const els = str.elements({ clientSecret, appearance: {
-        theme: 'stripe',
-        variables: {
-          colorPrimary: '#6D28D9',
-          colorBackground: T.card,
-          colorText: T.text,
-          borderRadius: '12px',
-          fontFamily: 'DM Sans, sans-serif',
+      const els = str.elements({
+        clientSecret: json.clientSecret,
+        appearance: {
+          theme: 'night',
+          variables: {
+            colorPrimary: '#6D28D9',
+            colorBackground: '#1e1b4b',
+            colorText: '#ffffff',
+            borderRadius: '12px',
+            fontFamily: 'DM Sans, sans-serif',
+          },
         },
-      }});
+      });
 
       const card = els.create('payment');
-      card.mount('#ob-stripe-element');
+      card.mount(mountRef.current);
+      card.on('ready', () => setReady(true));
       setStripe(str);
       setElements(els);
-      setLoading(false);
     }).catch(e => {
-      setLoading(false);
       if (e.message === 'NO_KEY') setNoKey(true);
       else setError(e.message);
     });
-  }, [amount, jobId, customerEmail, T]);
+  }, [amount, jobId, customerEmail]); // eslint-disable-line
 
   const handlePay = async () => {
     if (!stripe || !elements) return;
     setProcessing(true);
     setError(null);
-
     const { error } = await stripe.confirmPayment({
       elements,
       confirmParams: { return_url: window.location.origin },
       redirect: 'if_required',
     });
-
     if (error) {
       setError(error.message);
       setProcessing(false);
@@ -89,9 +91,7 @@ export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCance
         Stripe Payments Ready
       </div>
       <div style={{ fontSize: 12, color: T.muted, marginTop: 8, lineHeight: 1.7 }}>
-        Add these to Vercel environment variables:<br/>
-        <code style={{ background: T.bg2, padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>REACT_APP_STRIPE_PUBLIC_KEY</code><br/>
-        <code style={{ background: T.bg2, padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>STRIPE_SECRET_KEY</code>
+        Add <code style={{ background: T.bg2, padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>REACT_APP_STRIPE_PUBLIC_KEY</code> and <code style={{ background: T.bg2, padding: '2px 6px', borderRadius: 4, fontSize: 11 }}>STRIPE_SECRET_KEY</code> to Vercel environment variables
       </div>
     </div>
   );
@@ -109,15 +109,17 @@ export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCance
         </div>
       </div>
 
-      {loading ? (
-        <div style={{ height: 60, display: 'flex', alignItems: 'center', justifyContent: 'center', color: T.muted, fontSize: 13 }}>
+      {/* Stripe mounts into this div via ref */}
+      <div ref={mountRef} style={{
+        background: '#1e1b4b', border: `1.5px solid ${T.border}`,
+        borderRadius: 12, padding: '14px 16px',
+        minHeight: 60,
+      }} />
+
+      {!ready && !error && (
+        <div style={{ fontSize: 12, color: T.muted, textAlign: 'center' }}>
           Loading card form...
         </div>
-      ) : (
-        <div id="ob-stripe-element" style={{
-          background: T.card2, border: `1.5px solid ${T.border}`,
-          borderRadius: 12, padding: '14px 16px',
-        }} />
       )}
 
       {error && (
@@ -128,12 +130,14 @@ export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCance
       )}
 
       <div style={{ display: 'flex', gap: 10 }}>
-        <button onClick={handlePay} disabled={processing || loading} style={{
+        <button onClick={handlePay} disabled={processing || !ready} style={{
           flex: 1, padding: '13px 0', borderRadius: 14,
           background: T.primary, color: '#fff', border: 'none',
-          fontWeight: 800, fontSize: 14, cursor: processing ? 'wait' : 'pointer',
+          fontWeight: 800, fontSize: 14,
+          cursor: processing || !ready ? 'not-allowed' : 'pointer',
           fontFamily: "'DM Sans',sans-serif",
-          opacity: processing ? 0.7 : 1,
+          opacity: processing || !ready ? 0.6 : 1,
+          transition: 'opacity 0.2s',
         }}>
           {processing ? '⏳ Processing...' : `Pay £${amount.toFixed(2)}`}
         </button>
@@ -145,7 +149,7 @@ export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCance
         }}>Cancel</button>
       </div>
 
-      <div style={{ fontSize: 11, color: T.muted, textAlign: 'center', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+      <div style={{ fontSize: 11, color: T.muted, textAlign: 'center' }}>
         🔒 Secured by Stripe · You won't be charged until delivery
       </div>
     </div>
