@@ -5,6 +5,7 @@ import { Card, Badge, Button, Input, Avatar, StatusBadge, SectionTitle, Spinner 
 import { showToast } from '../components/Toast';
 import { sendBookingConfirmation } from '../emailService';
 import { MapView } from '../components/MapView';
+import { StripePayment } from '../components/StripePayment';
 import { ERRAND_TYPES, MOCK_ORDERS, MOCK_RUNNERS, TRACK_STEPS, CHAT_MESSAGES } from '../data';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
@@ -71,6 +72,10 @@ function BookingFlow({ errand, onComplete, onBack }) {
 
   const startTracking = (runner) => {
     setSelectedRunner(runner);
+    setStep(15); // payment step
+  };
+
+  const afterPayment = () => {
     setStep(2);
     let s = 0;
     const t = setInterval(() => {
@@ -283,6 +288,54 @@ function BookingFlow({ errand, onComplete, onBack }) {
             </Button>
           </Card>
         ))}
+      </div>
+    </div>
+  );
+
+  // ── Step 15: Payment ──
+  if (step === 15) return (
+    <div style={{ animation: 'fadeUp 0.3s ease both' }}>
+      <div style={stickyHdr}>
+        <button onClick={() => setStep(1)} style={{
+          background: T.bg2, border: 'none', color: T.text,
+          width: 36, height: 36, borderRadius: 12, cursor: 'pointer',
+          fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>←</button>
+        <div>
+          <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
+            💳 Pay & Confirm
+          </div>
+          <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
+            Buddy: {selectedRunner?.name}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <Card style={{ padding: 16, borderLeft: `4px solid ${errand.color}` }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <Avatar emoji={selectedRunner?.avatar} size={46} online />
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 15, fontWeight: 800, color: T.text, fontFamily: "'Syne',sans-serif" }}>
+                {selectedRunner?.name}
+              </div>
+              <div style={{ fontSize: 12, color: T.muted }}>⭐ {selectedRunner?.rating} · ETA {selectedRunner?.eta} min</div>
+            </div>
+          </div>
+          <div style={{ height: 1, background: T.border, margin: '12px 0' }} />
+          <div style={{ fontSize: 12, color: T.muted }}>
+            📋 {taskText}<br/>
+            📍 {address}
+          </div>
+        </Card>
+
+        <StripePayment
+          amount={parseFloat(budget) + 0.54}
+          jobId={jobId}
+          customerEmail={currentUser?.email}
+          onSuccess={afterPayment}
+          onCancel={() => setStep(1)}
+        />
       </div>
     </div>
   );
