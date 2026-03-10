@@ -384,7 +384,7 @@ export default function Login() {
                 <>
                   <Field label="FULL NAME" value={suName}
                     onChange={v => { setSuName(v); setSuNameErr(''); }}
-                    error={suNameErr} placeholder="e.g. John Cena" icon="👤" />
+                    error={suNameErr} placeholder="e.g. Chalrlie Lambert" icon="👤" />
                   <Field label="EMAIL ADDRESS" type="email" value={suEmail}
                     onChange={v => { setSuEmail(v); setSuEmailErr(''); }}
                     error={suEmailErr} placeholder="your@email.com" icon="📧" />
