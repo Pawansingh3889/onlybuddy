@@ -1,0 +1,39 @@
+{
+  "short_name": "OnlyBuddy",
+  "name": "OnlyBuddy — Hull's Errand App",
+  "description": "Book a Buddy for errands, groceries and deliveries in Hull",
+  "icons": [
+    {
+      "src": "favicon.ico",
+      "sizes": "64x64 32x32 24x24 16x16",
+      "type": "image/x-icon"
+    },
+    {
+      "src": "icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icon-512.png",
+      "type": "image/png",
+      "sizes": "512x512",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#6D28D9",
+  "background_color": "#F8F7FF",
+  "orientation": "portrait",
+  "categories": ["lifestyle", "shopping"],
+  "shortcuts": [
+    {
+      "name": "Book a Buddy",
+      "short_name": "Book",
+      "description": "Book a new errand",
+      "url": "/?tab=book",
+      "icons": [{ "src": "favicon.ico", "sizes": "64x64" }]
+    }
+  ]
+}

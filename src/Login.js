@@ -124,7 +124,7 @@ export default function Login() {
                   transform:'translateY(-50%)', fontSize:16 }}>👤</span>
                 <input style={inputStyle} type="text" value={name}
                   onChange={e=>setName(e.target.value)}
-                  placeholder="e.g. Marian OP"
+                  placeholder="e.g. Pawan Singh"
                   onFocus={e=>e.target.style.borderColor=T.primary}
                   onBlur={e=>e.target.style.borderColor=T.border} />
               </div>

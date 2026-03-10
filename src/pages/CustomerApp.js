@@ -4,6 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { Card, Badge, Button, Input, Avatar, StatusBadge, SectionTitle, Spinner } from '../components/UI';
 import { showToast } from '../components/Toast';
 import { sendBookingConfirmation } from '../emailService';
+import { MapView } from '../components/MapView';
 import { ERRAND_TYPES, MOCK_ORDERS, MOCK_RUNNERS, TRACK_STEPS, CHAT_MESSAGES } from '../data';
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 import { db } from "../firebase";
@@ -328,6 +329,15 @@ function BookingFlow({ errand, onComplete, onBack }) {
             <Button variant="secondary" style={{ flex: 1, padding: 10, borderRadius: 12 }}
               onClick={() => setShowChat(!showChat)}>💬 Message</Button>
           </div>
+        </Card>
+
+        {/* Live map */}
+        <Card style={{ padding: 0, overflow: 'hidden' }}>
+          <MapView
+            buddyLocation={{ lat: 53.7457 + (trackStep * 0.002), lng: -0.3367 - (trackStep * 0.001) }}
+            customerLocation={{ lat: 53.7480, lng: -0.3290 }}
+            height={220}
+          />
         </Card>
 
         {showChat && (
