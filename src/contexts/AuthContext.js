@@ -1,62 +1,63 @@
-import React, { createContext, useContext, useEffect, useState } from "react";
-import { auth, db } from "../firebase";
+import { createContext, useContext, useEffect, useState } from 'react';
 import {
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  onAuthStateChanged,
   signOut,
-} from "firebase/auth";
-import { doc, setDoc, getDoc } from "firebase/firestore";
+  onAuthStateChanged,
+  updateProfile,
+} from 'firebase/auth';
+import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { auth, db } from '../firebase';
 
 const AuthContext = createContext();
-export function useAuth() { return useContext(AuthContext); }
 
 export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole]       = useState(null);
   const [loading, setLoading]         = useState(true);
 
-  async function signup(email, password, role, name) {
-    const res  = await createUserWithEmailAndPassword(auth, email, password);
-    const user = res.user;
-    await setDoc(doc(db, "users", user.uid), {
-      name:      name || email.split("@")[0],
-      email:     email,
-      role:      role || "customer",
-      createdAt: new Date(),
+  const signup = async (email, password, name, phone = '') => {
+    const { user } = await createUserWithEmailAndPassword(auth, email, password);
+    await updateProfile(user, { displayName: name });
+    await setDoc(doc(db, 'users', user.uid), {
+      name,
+      email,
+      phone,
+      role: 'customer',
+      status: 'active',
+      createdAt: serverTimestamp(),
     });
+    setUserRole('customer');
     return user;
-  }
+  };
 
-  function login(email, password) {
-    return signInWithEmailAndPassword(auth, email, password);
-  }
+  const login = (email, password) => signInWithEmailAndPassword(auth, email, password);
 
-  function logout() {
-    return signOut(auth);
-  }
+  const logout = () => signOut(auth);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const unsub = onAuthStateChanged(auth, async (user) => {
+      setCurrentUser(user);
       if (user) {
         try {
-          const docSnap = await getDoc(doc(db, "users", user.uid));
-          setUserRole(docSnap.exists() ? (docSnap.data()?.role || "customer") : "customer");
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          setUserRole(snap.exists() ? (snap.data()?.role || 'customer') : 'customer');
         } catch {
-          setUserRole("customer");
+          setUserRole('customer');
         }
       } else {
         setUserRole(null);
       }
-      setCurrentUser(user);
       setLoading(false);
     });
-    return unsubscribe;
+    return unsub;
   }, []);
 
   return (
-    <AuthContext.Provider value={{ currentUser, userRole, signup, login, logout, loading }}>
+    <AuthContext.Provider value={{ currentUser, userRole, loading, signup, login, logout }}>
       {!loading && children}
     </AuthContext.Provider>
   );
 }
+
+export const useAuth = () => useContext(AuthContext);

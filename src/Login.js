@@ -1,471 +1,373 @@
 import { useState } from 'react';
+import { useAuth } from './contexts/AuthContext';
+import { useNavigate, Link } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
-import {
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendPasswordResetEmail,
-} from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
-import { auth, db } from './firebase';
+import { sendPasswordResetEmail } from 'firebase/auth';
+import { auth } from './firebase';
 
-// ── Validation helpers ────────────────────────────────────────
-const validators = {
-  email: v => {
-    if (!v) return 'Email is required';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) return 'Enter a valid email address';
-    return null;
-  },
-  password: v => {
-    if (!v) return 'Password is required';
-    if (v.length < 6) return 'Password must be at least 6 characters';
-    if (!/[A-Z]/.test(v)) return 'Include at least one uppercase letter';
-    if (!/[0-9]/.test(v)) return 'Include at least one number';
-    return null;
-  },
-  name: v => {
-    if (!v?.trim()) return 'Full name is required';
-    if (v.trim().length < 2) return 'Name must be at least 2 characters';
-    return null;
-  },
-  phone: v => {
-    if (!v) return 'Phone number is required';
-    const digits = v.replace(/\D/g, '');
-    if (digits.length < 10 || digits.length > 15) return 'Enter a valid UK phone number';
-    return null;
-  },
+// ── Email validation
+const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
+
+// ── Password strength
+const passwordStrength = (p) => {
+  if (p.length === 0) return null;
+  if (p.length < 6)   return { level: 0, label: 'Too short',  color: '#EF4444' };
+  if (p.length < 8)   return { level: 1, label: 'Weak',       color: '#F97316' };
+  const hasUpper  = /[A-Z]/.test(p);
+  const hasNum    = /[0-9]/.test(p);
+  const hasSymbol = /[^A-Za-z0-9]/.test(p);
+  const score = [hasUpper, hasNum, hasSymbol].filter(Boolean).length;
+  if (score === 0) return { level: 1, label: 'Weak',      color: '#F97316' };
+  if (score === 1) return { level: 2, label: 'Fair',      color: '#EAB308' };
+  if (score === 2) return { level: 3, label: 'Good',      color: '#22C55E' };
+  return             { level: 4, label: 'Strong 💪',    color: '#059669' };
 };
 
-const FIREBASE_ERRORS = {
-  'auth/email-already-in-use':    'An account with this email already exists',
-  'auth/invalid-email':           'Invalid email address',
-  'auth/weak-password':           'Password is too weak',
-  'auth/user-not-found':          'No account found with this email',
-  'auth/wrong-password':          'Incorrect password',
-  'auth/invalid-credential':      'Incorrect email or password',
-  'auth/too-many-requests':       'Too many attempts — please try again later',
-  'auth/network-request-failed':  'Network error — check your connection',
-  'auth/user-disabled':           'This account has been disabled',
+// ── UK phone formatter
+const formatUKPhone = (v) => {
+  const digits = v.replace(/\D/g, '').slice(0, 11);
+  if (digits.length <= 5)  return digits;
+  if (digits.length <= 10) return `${digits.slice(0,5)} ${digits.slice(5)}`;
+  return `${digits.slice(0,5)} ${digits.slice(5,8)} ${digits.slice(8)}`;
 };
 
-function Field({ label, type = 'text', value, onChange, error, placeholder, icon, hint }) {
-  const { theme: T } = useTheme();
-  const [show, setShow] = useState(false);
-  const inputType = type === 'password' ? (show ? 'text' : 'password') : type;
-
-  return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-      <label style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: 0.8 }}>
-        {label}
-      </label>
-      <div style={{ position: 'relative' }}>
-        {icon && (
-          <span style={{
-            position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)',
-            fontSize: 16, pointerEvents: 'none',
-          }}>{icon}</span>
-        )}
-        <input
-          type={inputType}
-          value={value}
-          onChange={e => onChange(e.target.value)}
-          placeholder={placeholder}
-          style={{
-            width: '100%', padding: icon ? '11px 40px 11px 38px' : '11px 40px 11px 14px',
-            background: error ? T.redBg : T.card2,
-            border: `1.5px solid ${error ? T.red : T.border}`,
-            borderRadius: 12, color: T.text, fontSize: 14,
-            fontFamily: "'DM Sans', sans-serif", outline: 'none',
-            transition: 'border-color 0.2s, box-shadow 0.2s',
-            boxSizing: 'border-box',
-          }}
-          onFocus={e => { e.target.style.borderColor = T.primary; e.target.style.boxShadow = `0 0 0 3px ${T.primary}20`; }}
-          onBlur={e => { e.target.style.borderColor = error ? T.red : T.border; e.target.style.boxShadow = 'none'; }}
-        />
-        {type === 'password' && (
-          <button
-            type="button"
-            onClick={() => setShow(s => !s)}
-            style={{
-              position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)',
-              background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 0,
-            }}
-          >{show ? '🙈' : '👁️'}</button>
-        )}
-      </div>
-      {error && (
-        <div style={{ fontSize: 11, color: T.red, display: 'flex', alignItems: 'center', gap: 4 }}>
-          ⚠️ {error}
-        </div>
-      )}
-      {hint && !error && (
-        <div style={{ fontSize: 11, color: T.muted }}>{hint}</div>
-      )}
-    </div>
-  );
-}
-
-// ── Forgot Password Screen ─────────────────────────────────────
-function ForgotPassword({ onBack }) {
-  const { theme: T } = useTheme();
-  const [email, setEmail]     = useState('');
-  const [emailErr, setEmailErr] = useState('');
-  const [sent, setSent]       = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState('');
-
-  const handleReset = async () => {
-    const err = validators.email(email);
-    if (err) return setEmailErr(err);
-    setEmailErr('');
-    setError('');
-    setLoading(true);
-    try {
-      await sendPasswordResetEmail(auth, email.trim());
-      setSent(true);
-    } catch (e) {
-      setError(FIREBASE_ERRORS[e.code] || 'Could not send reset email. Try again.');
-    }
-    setLoading(false);
-  };
-
-  return (
-    <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-      <button onClick={onBack} style={{
-        background: 'none', border: 'none', color: T.primary,
-        fontSize: 13, fontWeight: 700, cursor: 'pointer',
-        fontFamily: "'DM Sans',sans-serif", marginBottom: 20,
-        display: 'flex', alignItems: 'center', gap: 6, padding: 0,
-      }}>← Back to login</button>
-
-      {sent ? (
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
-          <div style={{ fontSize: 56, marginBottom: 16 }}>📧</div>
-          <div style={{ fontSize: 22, fontWeight: 900, color: T.text, fontFamily: "'Syne',sans-serif", marginBottom: 8 }}>
-            Check your email!
-          </div>
-          <div style={{ fontSize: 14, color: T.muted, lineHeight: 1.6, marginBottom: 24 }}>
-            We sent a password reset link to<br/>
-            <strong style={{ color: T.primary }}>{email}</strong>
-          </div>
-          <div style={{
-            background: T.primaryBg, border: `1px solid ${T.primary}30`,
-            borderRadius: 14, padding: '14px 16px', fontSize: 12, color: T.muted,
-            textAlign: 'left', lineHeight: 1.8,
-          }}>
-            💡 Didn't get it? Check your spam folder.<br/>
-            ⏱ Link expires in 1 hour.<br/>
-            🔁 <span
-              onClick={handleReset}
-              style={{ color: T.primary, cursor: 'pointer', fontWeight: 700 }}>
-              Send again
-            </span>
-          </div>
-          <button onClick={onBack} style={{
-            marginTop: 20, width: '100%', padding: '13px 0', borderRadius: 14,
-            background: T.primary, color: '#fff', border: 'none',
-            fontWeight: 800, fontSize: 14, cursor: 'pointer',
-            fontFamily: "'DM Sans',sans-serif",
-          }}>Back to Sign In</button>
-        </div>
-      ) : (
-        <>
-          <div style={{ fontSize: 22, fontWeight: 900, color: T.text, fontFamily: "'Syne',sans-serif", marginBottom: 6 }}>
-            Forgot Password? 🔑
-          </div>
-          <div style={{ fontSize: 13, color: T.muted, marginBottom: 24, lineHeight: 1.6 }}>
-            Enter your email and we'll send you a link to reset your password.
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
-            <Field
-              label="EMAIL ADDRESS"
-              type="email"
-              value={email}
-              onChange={v => { setEmail(v); setEmailErr(''); }}
-              error={emailErr}
-              placeholder="your@email.com"
-              icon="📧"
-            />
-
-            {error && (
-              <div style={{
-                background: T.redBg, border: `1px solid ${T.red}40`,
-                borderRadius: 12, padding: '10px 14px', fontSize: 13, color: T.red,
-              }}>⚠️ {error}</div>
-            )}
-
-            <button onClick={handleReset} disabled={loading} style={{
-              width: '100%', padding: '13px 0', borderRadius: 14,
-              background: T.primary, color: '#fff', border: 'none',
-              fontWeight: 800, fontSize: 14, cursor: loading ? 'wait' : 'pointer',
-              fontFamily: "'DM Sans',sans-serif", opacity: loading ? 0.7 : 1,
-              transition: 'opacity 0.2s',
-            }}>
-              {loading ? '⏳ Sending...' : 'Send Reset Email →'}
-            </button>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-// ── Main Login Component ───────────────────────────────────────
 export default function Login() {
-  const { theme: T, isDark, toggleTheme } = useTheme();
-  const [mode, setMode]       = useState('signin'); // 'signin' | 'signup' | 'forgot'
-  const [loading, setLoading] = useState(false);
-  const [firebaseErr, setFirebaseErr] = useState('');
+  const { theme } = useTheme();
+  const { login, signup } = useAuth();
+  const navigate = useNavigate();
 
-  // Sign in fields
-  const [siEmail, setSiEmail]     = useState('');
-  const [siPassword, setSiPassword] = useState('');
-  const [siEmailErr, setSiEmailErr] = useState('');
-  const [siPassErr, setSiPassErr]   = useState('');
+  // mode: 'login' | 'signup' | 'reset'
+  const [mode, setMode]           = useState('login');
+  const [name, setName]           = useState('');
+  const [phone, setPhone]         = useState('');
+  const [email, setEmail]         = useState('');
+  const [password, setPassword]   = useState('');
+  const [showPass, setShowPass]   = useState(false);
+  const [confirmPass, setConfirmPass] = useState('');
+  const [error, setError]         = useState('');
+  const [success, setSuccess]     = useState('');
+  const [loading, setLoading]     = useState(false);
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [agreed, setAgreed]       = useState(false);
 
-  // Sign up fields
-  const [suName, setSuName]       = useState('');
-  const [suEmail, setSuEmail]     = useState('');
-  const [suPhone, setSuPhone]     = useState('');
-  const [suPassword, setSuPassword] = useState('');
-  const [suConfirm, setSuConfirm] = useState('');
-  const [suRole, setSuRole]       = useState('customer');
-  const [suNameErr, setSuNameErr]   = useState('');
-  const [suEmailErr, setSuEmailErr] = useState('');
-  const [suPhoneErr, setSuPhoneErr] = useState('');
-  const [suPassErr, setSuPassErr]   = useState('');
-  const [suConfirmErr, setSuConfirmErr] = useState('');
+  const pwStrength = passwordStrength(password);
+  const emailError = emailTouched && email && !isValidEmail(email);
 
-  const formatPhone = v => {
-    const digits = v.replace(/\D/g, '').slice(0, 11);
-    if (digits.length <= 4) return digits;
-    if (digits.length <= 7) return `${digits.slice(0,4)} ${digits.slice(4)}`;
-    return `${digits.slice(0,4)} ${digits.slice(4,7)} ${digits.slice(7)}`;
+  const resetForm = () => {
+    setName(''); setPhone(''); setEmail(''); setPassword('');
+    setConfirmPass(''); setError(''); setSuccess('');
+    setEmailTouched(false); setAgreed(false);
   };
 
-  const handleSignIn = async () => {
-    const eErr = validators.email(siEmail);
-    const pErr = siPassword ? null : 'Password is required';
-    setSiEmailErr(eErr || '');
-    setSiPassErr(pErr || '');
-    if (eErr || pErr) return;
+  const switchMode = (m) => { resetForm(); setMode(m); };
+
+  // ── SUBMIT
+  const submit = async () => {
+    setError(''); setSuccess('');
+
+    // Forgot password
+    if (mode === 'reset') {
+      if (!email) { setError('Please enter your email address'); return; }
+      if (!isValidEmail(email)) { setError('Please enter a valid email address'); return; }
+      setLoading(true);
+      try {
+        await sendPasswordResetEmail(auth, email);
+        setSuccess('✅ Reset email sent! Check your inbox (and spam folder).');
+      } catch (e) {
+        setError(e.code === 'auth/user-not-found' ? 'No account found with that email.' : 'Failed to send reset email. Try again.');
+      } finally { setLoading(false); }
+      return;
+    }
+
+    // Validation
+    if (!email || !password) { setError('Please fill in all fields'); return; }
+    if (!isValidEmail(email)) { setError('Please enter a valid email address'); return; }
+
+    if (mode === 'signup') {
+      if (!name.trim())        { setError('Please enter your full name'); return; }
+      if (!phone.trim())       { setError('Please enter your phone number'); return; }
+      if (phone.replace(/\D/,'').length < 10) { setError('Please enter a valid UK phone number'); return; }
+      if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
+      if (password !== confirmPass) { setError('Passwords do not match'); return; }
+      if (!agreed) { setError('Please agree to the Terms of Service to continue'); return; }
+    }
 
     setLoading(true);
-    setFirebaseErr('');
     try {
-      await signInWithEmailAndPassword(auth, siEmail.trim(), siPassword);
+      if (mode === 'login') {
+        await login(email, password);
+      } else {
+        await signup(email, password, name, phone);
+      }
+      navigate('/');
     } catch (e) {
-      setFirebaseErr(FIREBASE_ERRORS[e.code] || 'Sign in failed. Please try again.');
-    }
-    setLoading(false);
+      const msg =
+        e.code === 'auth/wrong-password'           ? 'Incorrect password. Try again or reset it below.' :
+        e.code === 'auth/user-not-found'           ? 'No account found with that email address.' :
+        e.code === 'auth/email-already-in-use'     ? 'An account already exists with this email.' :
+        e.code === 'auth/weak-password'            ? 'Password must be at least 6 characters.' :
+        e.code === 'auth/too-many-requests'        ? 'Too many attempts. Please wait a few minutes.' :
+        e.code === 'auth/invalid-credential'       ? 'Incorrect email or password.' :
+        'Something went wrong. Please try again.';
+      setError(msg);
+    } finally { setLoading(false); }
   };
 
-  const handleSignUp = async () => {
-    const nErr = validators.name(suName);
-    const eErr = validators.email(suEmail);
-    const phErr = validators.phone(suPhone);
-    const pErr = validators.password(suPassword);
-    const cErr = suConfirm !== suPassword ? 'Passwords do not match' : null;
+  // ── STYLES
+  const inp = (hasError) => ({
+    width: '100%', background: theme.bg2,
+    border: `1.5px solid ${hasError ? theme.red : theme.border}`,
+    borderRadius: 12, padding: '13px 16px',
+    color: theme.text, fontSize: 14,
+    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    outline: 'none', transition: 'border-color 0.2s',
+  });
+  const label = { fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' };
 
-    setSuNameErr(nErr || '');
-    setSuEmailErr(eErr || '');
-    setSuPhoneErr(phErr || '');
-    setSuPassErr(pErr || '');
-    setSuConfirmErr(cErr || '');
-    if (nErr || eErr || phErr || pErr || cErr) return;
-
-    setLoading(true);
-    setFirebaseErr('');
-    try {
-      const cred = await createUserWithEmailAndPassword(auth, suEmail.trim(), suPassword);
-      await setDoc(doc(db, 'users', cred.user.uid), {
-        name:      suName.trim(),
-        email:     suEmail.trim().toLowerCase(),
-        phone:     suPhone.replace(/\D/g, ''),
-        role:      suRole,
-        createdAt: serverTimestamp(),
-      });
-    } catch (e) {
-      setFirebaseErr(FIREBASE_ERRORS[e.code] || 'Sign up failed. Please try again.');
-    }
-    setLoading(false);
-  };
-
-  const card = {
-    background: T.card,
-    borderRadius: 24,
-    padding: '32px 28px',
-    boxShadow: '0 8px 40px rgba(0,0,0,0.12)',
-    border: `1px solid ${T.border}`,
-    width: '100%',
-    maxWidth: 420,
-    boxSizing: 'border-box',
-  };
+  const FEATURES = [
+    { icon: '🛒', text: 'Grocery delivery in 30 min' },
+    { icon: '💊', text: 'Prescription runs covered'   },
+    { icon: '📦', text: 'Parcels & returns sorted'    },
+    { icon: '🔍', text: 'DBS checked Buddies'         },
+  ];
 
   return (
-    <div style={{
-      minHeight: '100vh', background: T.bg,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-      padding: '20px 16px', fontFamily: "'DM Sans', sans-serif",
-    }}>
-      {/* Theme toggle */}
-      <button onClick={toggleTheme} style={{
-        position: 'fixed', top: 16, right: 16,
-        background: T.card, border: `1px solid ${T.border}`,
-        borderRadius: 12, width: 40, height: 40, cursor: 'pointer',
-        fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        boxShadow: '0 2px 8px rgba(0,0,0,0.1)',
-      }}>{isDark ? '☀️' : '🌙'}</button>
+    <div style={{ background: theme.bg, minHeight: '90vh', display: 'flex', alignItems: 'stretch' }}>
+      <style>{`
+        @keyframes slideIn { from{opacity:0;transform:translateX(-16px)} to{opacity:1;transform:none} }
+        @keyframes fadeUp  { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:none} }
+        .auth-input:focus { border-color: ${theme.primary} !important; box-shadow: 0 0 0 3px ${theme.primary}22; }
+        .tab-btn:hover { background: ${theme.bg2} !important; }
+        .social-btn:hover { background: ${theme.bg2} !important; transform: translateY(-1px); }
+        .switch-link:hover { text-decoration: underline; }
+      `}</style>
 
-      <div style={card}>
-        {/* Logo */}
-        <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ fontSize: 48, animation: 'float 3s ease-in-out infinite' }}>🤝</div>
-          <div style={{
-            fontSize: 28, fontWeight: 900, fontFamily: "'Syne',sans-serif",
-            background: `linear-gradient(135deg,${T.primary},${T.primaryLight})`,
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-            letterSpacing: '-0.5px', marginTop: 4,
-          }}>OnlyBuddy</div>
-          <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Hull's Errand & Grocery App</div>
+      {/* ── LEFT PANEL (desktop only) */}
+      <div style={{ flex: 1, background: `linear-gradient(145deg, ${theme.primaryDark} 0%, ${theme.primary} 55%, #8B5CF6 100%)`, padding: '60px 48px', display: 'flex', flexDirection: 'column', justifyContent: 'center', minWidth: 0 }} className="auth-left">
+        <style>{`@media(max-width:820px){.auth-left{display:none!important}}`}</style>
+        <div style={{ animation: 'slideIn 0.5s ease' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48 }}>
+            <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, backdropFilter: 'blur(8px)' }}>🤝</div>
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>OnlyBuddy</div>
+              <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>HULL'S ERRAND APP</div>
+            </div>
+          </div>
+
+          <h2 style={{ fontSize: 42, fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif", lineHeight: 1.15, marginBottom: 16 }}>
+            Your errands.<br />
+            <span style={{ color: 'rgba(255,255,255,0.75)' }}>Handled.</span>
+          </h2>
+          <p style={{ fontSize: 16, color: 'rgba(255,255,255,0.8)', lineHeight: 1.7, marginBottom: 40, maxWidth: 340 }}>
+            Send a verified local Buddy to handle anything — groceries, prescriptions, queues, parcels — while you get on with your day.
+          </p>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+            {FEATURES.map(f => (
+              <div key={f.text} style={{ display: 'flex', alignItems: 'center', gap: 14, background: 'rgba(255,255,255,0.12)', borderRadius: 14, padding: '14px 18px', backdropFilter: 'blur(8px)', border: '1px solid rgba(255,255,255,0.15)' }}>
+                <span style={{ fontSize: 22 }}>{f.icon}</span>
+                <span style={{ fontSize: 14, color: '#fff', fontWeight: 600 }}>{f.text}</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: 48, paddingTop: 32, borderTop: '1px solid rgba(255,255,255,0.15)', display: 'flex', gap: 32 }}>
+            {[['500+', 'Orders Done'], ['4.9★', 'Avg Rating'], ['30min', 'Avg Delivery']].map(([v, l]) => (
+              <div key={l}>
+                <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif" }}>{v}</div>
+                <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{l}</div>
+              </div>
+            ))}
+          </div>
         </div>
+      </div>
 
-        {/* Forgot password screen */}
-        {mode === 'forgot' && <ForgotPassword onBack={() => setMode('signin')} />}
+      {/* ── RIGHT PANEL — Form */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '40px 24px', minWidth: 0 }}>
+        <div style={{ width: '100%', maxWidth: 440, animation: 'fadeUp 0.4s ease' }}>
 
-        {/* Sign in / Sign up tabs */}
-        {mode !== 'forgot' && (
-          <>
-            <div style={{
-              display: 'flex', background: T.bg2,
-              borderRadius: 14, padding: 4, marginBottom: 24,
-              border: `1px solid ${T.border}`,
-            }}>
-              {['signin', 'signup'].map(m => (
-                <button key={m} onClick={() => { setMode(m); setFirebaseErr(''); }} style={{
-                  flex: 1, padding: '9px 0', borderRadius: 11,
-                  background: mode === m ? T.card : 'transparent',
-                  border: 'none', cursor: 'pointer', fontWeight: 700, fontSize: 13,
-                  color: mode === m ? T.primary : T.muted,
-                  fontFamily: "'DM Sans',sans-serif",
-                  boxShadow: mode === m ? '0 2px 8px rgba(0,0,0,0.1)' : 'none',
-                  transition: 'all 0.2s',
-                }}>{m === 'signin' ? 'Sign In' : 'Create Account'}</button>
+          {/* Mobile logo */}
+          <div style={{ display: 'none', alignItems: 'center', gap: 10, marginBottom: 32, justifyContent: 'center' }} className="mobile-logo">
+            <style>{`@media(max-width:820px){.mobile-logo{display:flex!important}}`}</style>
+            <div style={{ width: 40, height: 40, borderRadius: 12, background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🤝</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: theme.primary, fontFamily: "'Syne', sans-serif" }}>OnlyBuddy</div>
+          </div>
+
+          {/* ── Tab switcher (login/signup) */}
+          {mode !== 'reset' && (
+            <div style={{ display: 'flex', background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 4, marginBottom: 28 }}>
+              {[['login', '👋 Sign In'], ['signup', '✨ Create Account']].map(([m, label]) => (
+                <button key={m} className="tab-btn" onClick={() => switchMode(m)} style={{ flex: 1, padding: '11px', borderRadius: 11, border: 'none', background: mode === m ? `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` : 'transparent', color: mode === m ? '#fff' : theme.muted, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", transition: 'all 0.2s' }}>
+                  {label}
+                </button>
               ))}
             </div>
+          )}
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 20, padding: '32px 28px' }}>
 
-              {/* ── SIGN IN ── */}
-              {mode === 'signin' && (
-                <>
-                  <Field label="EMAIL ADDRESS" type="email"
-                    value={siEmail} onChange={v => { setSiEmail(v); setSiEmailErr(''); }}
-                    error={siEmailErr} placeholder="your@email.com" icon="📧" />
-                  <Field label="PASSWORD" type="password"
-                    value={siPassword} onChange={v => { setSiPassword(v); setSiPassErr(''); }}
-                    error={siPassErr} placeholder="Your password" icon="🔒" />
-
-                  <button
-                    onClick={() => setMode('forgot')}
-                    style={{
-                      background: 'none', border: 'none', color: T.primary,
-                      fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                      textAlign: 'right', fontFamily: "'DM Sans',sans-serif",
-                      padding: 0, alignSelf: 'flex-end', marginTop: -6,
-                    }}>
-                    Forgot password?
-                  </button>
-                </>
-              )}
-
-              {/* ── SIGN UP ── */}
-              {mode === 'signup' && (
-                <>
-                  <Field label="FULL NAME" value={suName}
-                    onChange={v => { setSuName(v); setSuNameErr(''); }}
-                    error={suNameErr} placeholder="e.g. Chalrlie Lambert" icon="👤" />
-                  <Field label="EMAIL ADDRESS" type="email" value={suEmail}
-                    onChange={v => { setSuEmail(v); setSuEmailErr(''); }}
-                    error={suEmailErr} placeholder="your@email.com" icon="📧" />
-                  <Field label="PHONE NUMBER" type="tel" value={suPhone}
-                    onChange={v => { setSuPhone(formatPhone(v)); setSuPhoneErr(''); }}
-                    error={suPhoneErr} placeholder="07700 900 123" icon="📱"
-                    hint="UK number — used for job updates" />
-                  <Field label="PASSWORD" type="password" value={suPassword}
-                    onChange={v => { setSuPassword(v); setSuPassErr(''); }}
-                    error={suPassErr} placeholder="Min 6 chars, 1 uppercase, 1 number" icon="🔒"
-                    hint="Must contain uppercase letter and number" />
-                  <Field label="CONFIRM PASSWORD" type="password" value={suConfirm}
-                    onChange={v => { setSuConfirm(v); setSuConfirmErr(''); }}
-                    error={suConfirmErr} placeholder="Repeat your password" icon="🔒" />
-
-                  <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, letterSpacing: 0.8, marginBottom: 8 }}>
-                      I AM A...
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-                      {[
-                        { id: 'customer', icon: '🛒', label: 'Customer', desc: 'Book errands & deliveries' },
-                        { id: 'buddy',    icon: '🏃', label: 'Buddy',    desc: 'Earn by completing jobs' },
-                      ].map(r => (
-                        <button key={r.id} onClick={() => setSuRole(r.id)} style={{
-                          padding: '12px 10px', borderRadius: 14, cursor: 'pointer',
-                          border: `2px solid ${suRole === r.id ? T.primary : T.border}`,
-                          background: suRole === r.id ? T.primaryBg : T.card2,
-                          transition: 'all 0.18s', textAlign: 'center',
-                          fontFamily: "'DM Sans',sans-serif",
-                        }}>
-                          <div style={{ fontSize: 24 }}>{r.icon}</div>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: suRole === r.id ? T.primary : T.text, marginTop: 4 }}>
-                            {r.label}
-                          </div>
-                          <div style={{ fontSize: 10, color: T.muted, marginTop: 2 }}>{r.desc}</div>
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* Firebase error */}
-              {firebaseErr && (
-                <div style={{
-                  background: T.redBg, border: `1.5px solid ${T.red}50`,
-                  borderRadius: 12, padding: '10px 14px',
-                  fontSize: 13, color: T.red,
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  animation: 'fadeUp 0.2s ease',
-                }}>⚠️ {firebaseErr}</div>
-              )}
-
-              {/* Submit button */}
-              <button
-                onClick={mode === 'signin' ? handleSignIn : handleSignUp}
-                disabled={loading}
-                style={{
-                  width: '100%', padding: '14px 0', borderRadius: 14,
-                  background: `linear-gradient(135deg,${T.primary},${T.primaryDark})`,
-                  color: '#fff', border: 'none', fontWeight: 800, fontSize: 15,
-                  cursor: loading ? 'wait' : 'pointer',
-                  fontFamily: "'DM Sans',sans-serif",
-                  opacity: loading ? 0.7 : 1,
-                  transition: 'all 0.2s',
-                  boxShadow: `0 4px 16px ${T.primary}40`,
-                }}>
-                {loading
-                  ? '⏳ Please wait...'
-                  : mode === 'signin' ? 'Sign In →' : 'Create My Account →'}
-              </button>
-
-              {mode === 'signup' && (
-                <div style={{ fontSize: 11, color: T.muted, textAlign: 'center', lineHeight: 1.6 }}>
-                  By creating an account you agree to our Terms of Service
+            {/* ── RESET MODE */}
+            {mode === 'reset' && (
+              <div>
+                <button onClick={() => switchMode('login')} style={{ background: 'none', border: 'none', color: theme.muted, cursor: 'pointer', fontSize: 13, fontWeight: 600, marginBottom: 20, padding: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  ← Back to Sign In
+                </button>
+                <div style={{ textAlign: 'center', marginBottom: 24 }}>
+                  <div style={{ fontSize: 48, marginBottom: 10 }}>🔐</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "'Syne', sans-serif" }}>Forgot Password?</div>
+                  <div style={{ fontSize: 14, color: theme.muted, marginTop: 6, lineHeight: 1.6 }}>No worries! Enter your email and we'll send you a reset link.</div>
                 </div>
-              )}
-            </div>
-          </>
-        )}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={label}>Email Address</label>
+                  <input className="auth-input" style={inp(false)} type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
+                </div>
+                {error   && <div style={{ background: theme.redBg, border: `1px solid ${theme.red}33`, borderRadius: 10, padding: '11px 14px', fontSize: 13, color: theme.red, fontWeight: 600, marginBottom: 14 }}>⚠️ {error}</div>}
+                {success && <div style={{ background: theme.greenBg, border: `1px solid ${theme.green}33`, borderRadius: 10, padding: '11px 14px', fontSize: 13, color: theme.green, fontWeight: 600, marginBottom: 14 }}>{success}</div>}
+                <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading ? theme.muted : `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                  {loading ? '⏳ Sending...' : '📧 Send Reset Link'}
+                </button>
+              </div>
+            )}
+
+            {/* ── LOGIN / SIGNUP FORMS */}
+            {mode !== 'reset' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+                <div style={{ textAlign: 'center', marginBottom: 4 }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, fontFamily: "'Syne', sans-serif" }}>
+                    {mode === 'login' ? 'Welcome back 👋' : 'Join OnlyBuddy ✨'}
+                  </div>
+                  <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
+                    {mode === 'login' ? 'Sign in to book errands and track orders' : 'Create your free account — takes 30 seconds'}
+                  </div>
+                </div>
+
+                {/* SIGNUP ONLY FIELDS */}
+                {mode === 'signup' && (
+                  <>
+                    <div>
+                      <label style={label}>Full Name</label>
+                      <input className="auth-input" style={inp(false)} placeholder="e.g. Charlie Lambert" value={name} onChange={e => setName(e.target.value)} />
+                    </div>
+                    <div>
+                      <label style={label}>Phone Number</label>
+                      <div style={{ position: 'relative' }}>
+                        <div style={{ position: 'absolute', left: 14, top: '50%', transform: 'translateY(-50%)', fontSize: 13, color: theme.muted, fontWeight: 600, pointerEvents: 'none' }}>🇬🇧 +44</div>
+                        <input className="auth-input" style={{ ...inp(false), paddingLeft: 72 }} type="tel" placeholder="07712 345678" value={phone} onChange={e => setPhone(formatUKPhone(e.target.value))} maxLength={14} />
+                      </div>
+                      <div style={{ fontSize: 11, color: theme.muted, marginTop: 4 }}>Used to contact you about your orders — never shared</div>
+                    </div>
+                  </>
+                )}
+
+                {/* EMAIL */}
+                <div>
+                  <label style={label}>Email Address</label>
+                  <div style={{ position: 'relative' }}>
+                    <input className="auth-input" style={inp(emailError)} type="email" placeholder="your@email.com" value={email}
+                      onChange={e => setEmail(e.target.value)}
+                      onBlur={() => setEmailTouched(true)}
+                      onKeyDown={e => e.key === 'Enter' && submit()}
+                    />
+                    {email && isValidEmail(email) && (
+                      <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: theme.green, fontSize: 16 }}>✓</div>
+                    )}
+                  </div>
+                  {emailError && <div style={{ fontSize: 12, color: theme.red, marginTop: 4, fontWeight: 600 }}>⚠ Please enter a valid email address</div>}
+                </div>
+
+                {/* PASSWORD */}
+                <div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <label style={{ ...label, marginBottom: 0 }}>Password</label>
+                    {mode === 'login' && (
+                      <span onClick={() => switchMode('reset')} style={{ fontSize: 12, color: theme.primary, fontWeight: 700, cursor: 'pointer' }} className="switch-link">
+                        Forgot password?
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ position: 'relative' }}>
+                    <input className="auth-input" style={{ ...inp(false), paddingRight: 48 }} type={showPass ? 'text' : 'password'} placeholder="••••••••" value={password} onChange={e => setPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && submit()} />
+                    <button onClick={() => setShowPass(s => !s)} style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', fontSize: 16, padding: 0 }}>
+                      {showPass ? '🙈' : '👁️'}
+                    </button>
+                  </div>
+
+                  {/* Password strength bar — signup only */}
+                  {mode === 'signup' && pwStrength && (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ height: 4, background: theme.border, borderRadius: 2, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(pwStrength.level / 4) * 100}%`, background: pwStrength.color, borderRadius: 2, transition: 'all 0.3s' }} />
+                      </div>
+                      <div style={{ fontSize: 11, color: pwStrength.color, fontWeight: 700, marginTop: 4 }}>{pwStrength.label}</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* CONFIRM PASSWORD — signup only */}
+                {mode === 'signup' && (
+                  <div>
+                    <label style={label}>Confirm Password</label>
+                    <div style={{ position: 'relative' }}>
+                      <input className="auth-input" style={inp(confirmPass && password !== confirmPass)} type={showPass ? 'text' : 'password'} placeholder="••••••••" value={confirmPass} onChange={e => setConfirmPass(e.target.value)} />
+                      {confirmPass && password === confirmPass && (
+                        <div style={{ position: 'absolute', right: 14, top: '50%', transform: 'translateY(-50%)', color: theme.green, fontSize: 16 }}>✓</div>
+                      )}
+                    </div>
+                    {confirmPass && password !== confirmPass && <div style={{ fontSize: 12, color: theme.red, marginTop: 4, fontWeight: 600 }}>⚠ Passwords do not match</div>}
+                  </div>
+                )}
+
+                {/* Terms — signup only */}
+                {mode === 'signup' && (
+                  <label style={{ display: 'flex', gap: 10, alignItems: 'flex-start', cursor: 'pointer', padding: '12px 14px', borderRadius: 12, background: agreed ? theme.greenBg : theme.bg2, border: `1.5px solid ${agreed ? theme.green : theme.border}`, transition: 'all 0.2s' }}>
+                    <input type="checkbox" checked={agreed} onChange={e => setAgreed(e.target.checked)} style={{ marginTop: 2, width: 16, height: 16, accentColor: theme.primary, flexShrink: 0 }} />
+                    <span style={{ fontSize: 13, color: theme.text2, lineHeight: 1.5 }}>
+                      I agree to the <span style={{ color: theme.primary, fontWeight: 700 }}>Terms of Service</span> and <span style={{ color: theme.primary, fontWeight: 700 }}>Privacy Policy</span>
+                    </span>
+                  </label>
+                )}
+
+                {/* Error */}
+                {error && (
+                  <div style={{ background: theme.redBg, border: `1px solid ${theme.red}33`, borderRadius: 12, padding: '12px 16px', fontSize: 13, color: theme.red, fontWeight: 600 }}>
+                    ⚠️ {error}
+                    {error.includes('reset') && (
+                      <span onClick={() => switchMode('reset')} style={{ color: theme.primary, cursor: 'pointer', marginLeft: 6, fontWeight: 700 }}>Reset it →</span>
+                    )}
+                  </div>
+                )}
+
+                {/* Submit */}
+                <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '15px', borderRadius: 13, border: 'none', background: loading ? theme.muted : `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: loading ? 'none' : `0 4px 18px ${theme.primary}44`, transition: 'all 0.2s', marginTop: 4 }}>
+                  {loading ? '⏳ Please wait...' : mode === 'login' ? 'Sign In to OnlyBuddy →' : 'Create My Account →'}
+                </button>
+
+                {/* Divider */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ flex: 1, height: 1, background: theme.border }} />
+                  <span style={{ fontSize: 12, color: theme.muted, fontWeight: 600 }}>OR</span>
+                  <div style={{ flex: 1, height: 1, background: theme.border }} />
+                </div>
+
+                {/* Switch mode */}
+                <div style={{ textAlign: 'center', fontSize: 14, color: theme.muted }}>
+                  {mode === 'login' ? (
+                    <>New to OnlyBuddy? <span onClick={() => switchMode('signup')} style={{ color: theme.primary, fontWeight: 800, cursor: 'pointer' }} className="switch-link">Create free account →</span></>
+                  ) : (
+                    <>Already have an account? <span onClick={() => switchMode('login')} style={{ color: theme.primary, fontWeight: 800, cursor: 'pointer' }} className="switch-link">Sign in →</span></>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </div>
+
+          {/* Bottom link */}
+          <div style={{ textAlign: 'center', marginTop: 20, fontSize: 13, color: theme.muted }}>
+            Want to earn £10–£18/hr? <Link to="/apply" style={{ color: theme.primary, fontWeight: 700, textDecoration: 'none' }}>Apply to be a Buddy →</Link>
+          </div>
+        </div>
       </div>
     </div>
   );

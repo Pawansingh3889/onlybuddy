@@ -1,17 +1,24 @@
-import { initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+// src/firebase.js
+// ─────────────────────────────────────────────────────────
+// REPLACE the config below with YOUR actual Firebase project values
+// Found at: Firebase Console → Project Settings → General → Your Apps
+// ─────────────────────────────────────────────────────────
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
+import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-  apiKey:            "AIzaSyCfNMmIULY90ugYbmaLhkIJuxTi_5HtPnE",
-  authDomain:        "onlybuddy-493b2.firebaseapp.com",
-  projectId:         "onlybuddy-493b2",
-  storageBucket:     "onlybuddy-493b2.firebasestorage.app",
-  messagingSenderId: "613243455754",
-  appId:             "1:613243455754:web:d04e715cb24adebbe752f3",
+  apiKey:            "YOUR_API_KEY",
+  authDomain:        "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId:         "YOUR_PROJECT_ID",
+  storageBucket:     "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId:             "YOUR_APP_ID",
 };
 
-const app  = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
-export const db   = getFirestore(app);
+const app      = initializeApp(firebaseConfig);
+export const auth    = getAuth(app);
+export const db      = getFirestore(app);
+export const storage = getStorage(app);   // ← NEW: needed for ID photo uploads
 export default app;

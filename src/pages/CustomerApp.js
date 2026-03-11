@@ -1,81 +1,38 @@
 import { useState } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
-import { useAuth } from '../contexts/AuthContext';
-import { Card, Badge, Button, Input, Avatar, StatusBadge, SectionTitle, Spinner } from '../components/UI';
-import { showToast } from '../components/Toast';
-import { sendBookingConfirmation } from '../emailService';
-import { MapView } from '../components/MapView';
-import { StripePayment } from '../components/StripePayment';
+import { Card, Badge, Button, Input, Avatar, StatusBadge, SectionTitle, Divider } from '../components/UI';
 import { ERRAND_TYPES, MOCK_ORDERS, MOCK_RUNNERS, TRACK_STEPS, CHAT_MESSAGES } from '../data';
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
-import { db } from "../firebase";
+
+function ErrandTypeGrid({ onSelect }) {
+  const { theme } = useTheme();
+  return (
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+      {ERRAND_TYPES.map(e => (
+        <Card key={e.id} onClick={() => onSelect(e)} style={{ borderLeft: `4px solid ${e.color}`, padding: 14 }}>
+          <div style={{ fontSize: 30 }}>{e.icon}</div>
+          <div style={{ fontSize: 13, fontWeight: 700, color: theme.text, marginTop: 8, fontFamily: "'Syne', sans-serif" }}>{e.label}</div>
+          <div style={{ fontSize: 11, color: theme.muted, marginTop: 3, lineHeight: 1.4 }}>{e.desc}</div>
+        </Card>
+      ))}
+    </div>
+  );
+}
 
 function BookingFlow({ errand, onComplete, onBack }) {
-  const { theme: T } = useTheme();
-  const { currentUser } = useAuth();
-  const [step, setStep]           = useState(0);
-  const [taskText, setTaskText]   = useState('');
-  const [address, setAddress]     = useState('');
-  const [budget, setBudget]       = useState('8');
+  const { theme } = useTheme();
+  const [step, setStep] = useState(0);
+  const [taskText, setTaskText] = useState('');
+  const [address, setAddress] = useState('');
+  const [budget, setBudget] = useState('8');
   const [selectedRunner, setSelectedRunner] = useState(null);
   const [trackStep, setTrackStep] = useState(0);
-  const [chatMsg, setChatMsg]     = useState('');
-  const [messages, setMessages]   = useState(CHAT_MESSAGES);
-  const [rating, setRating]       = useState(0);
-  const [showChat, setShowChat]   = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [formError, setFormError] = useState('');
-  const [jobId, setJobId]         = useState('');
-
-  const submitJob = async () => {
-    setFormError('');
-    if (!taskText.trim()) return setFormError('Please describe your errand.');
-    if (!address.trim())  return setFormError('Please enter your delivery address.');
-    setSubmitting(true);
-    try {
-      const ref = await addDoc(collection(db, 'jobs'), {
-        type:            errand.id,
-        task:            taskText.trim(),
-        deliveryAddress: address.trim(),
-        pay:             budget,
-        status:          'searching',
-        customerEmail:   currentUser?.email || 'guest',
-        customerId:      currentUser?.uid   || 'guest',
-        createdAt:       serverTimestamp(),
-      });
-      setJobId(ref.id);
-
-      // ── Send confirmation email ──
-      const emailResult = await sendBookingConfirmation({
-        customerEmail: currentUser?.email,
-        customerName:  currentUser?.email?.split('@')[0],
-        task:          taskText.trim(),
-        address:       address.trim(),
-        pay:           budget,
-        errandType:    errand.label,
-        jobId:         ref.id,
-      });
-
-      if (emailResult.success) {
-        showToast('Booking confirmed! Check your email 📧', 'email');
-      } else {
-        showToast('Job submitted! Finding your Buddy...', 'success');
-      }
-
-      setStep(1);
-    } catch (e) {
-      console.error(e);
-      setFormError('Failed to submit. Please try again.');
-    }
-    setSubmitting(false);
-  };
+  const [chatMsg, setChatMsg] = useState('');
+  const [messages, setMessages] = useState(CHAT_MESSAGES);
+  const [rating, setRating] = useState(0);
+  const [showChat, setShowChat] = useState(false);
 
   const startTracking = (runner) => {
     setSelectedRunner(runner);
-    setStep(15); // payment step
-  };
-
-  const afterPayment = () => {
     setStep(2);
     let s = 0;
     const t = setInterval(() => {
@@ -87,609 +44,345 @@ function BookingFlow({ errand, onComplete, onBack }) {
 
   const sendMessage = () => {
     if (!chatMsg.trim()) return;
-    setMessages(m => [...m, {
-      id: Date.now(), from: 'customer', text: chatMsg,
-      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    }]);
+    setMessages(m => [...m, { id: Date.now(), from: 'customer', text: chatMsg, time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     setChatMsg('');
     setTimeout(() => {
-      setMessages(m => [...m, {
-        id: Date.now() + 1, from: 'runner', text: "Got it! I'll take care of that 👍",
-        time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-      }]);
+      setMessages(m => [...m, { id: Date.now() + 1, from: 'runner', text: "Got it! I'll take care of that 👍", time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) }]);
     }, 1200);
   };
 
-  const stickyHdr = {
-    padding: '14px 18px', borderBottom: `1px solid ${T.border}`,
-    display: 'flex', alignItems: 'center', gap: 12,
-    background: T.card, position: 'sticky', top: 0, zIndex: 10,
-    backdropFilter: 'blur(12px)',
-  };
-
-  // ── Step 0: Fill details ──
+  // Step 0: Details
   if (step === 0) return (
-    <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-      <div style={stickyHdr}>
-        <button onClick={onBack} style={{
-          background: T.bg2, border: 'none', color: T.text,
-          width: 36, height: 36, borderRadius: 12, cursor: 'pointer',
-          fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          transition: 'all 0.2s',
-        }}>←</button>
+    <div>
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: 10, background: theme.card, position: 'sticky', top: 0, zIndex: 10 }}>
+        <button onClick={onBack} style={{ background: theme.bg2, border: 'none', color: theme.text, width: 34, height: 34, borderRadius: 10, cursor: 'pointer', fontSize: 18 }}>←</button>
         <div>
-          <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
-            {errand.icon} {errand.label}
-          </div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>Describe your task</div>
+          <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{errand.icon} {errand.label}</div>
+          <div style={{ fontSize: 11, color: theme.muted }}>Describe your task</div>
         </div>
       </div>
-
-      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }} className="ob-stagger">
-        <div style={{
-          background: errand.color + '15', border: `1.5px solid ${errand.color}30`,
-          borderRadius: 14, padding: '12px 16px',
-          borderLeft: `4px solid ${errand.color}`,
-        }}>
-          <div style={{ fontSize: 12, color: errand.color, fontWeight: 600 }}>
-            💡 Example: {errand.ex}
-          </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div style={{ background: errand.color + '15', border: `1px solid ${errand.color}33`, borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ fontSize: 12, color: errand.color, fontWeight: 600 }}>💡 Example: {errand.ex}</div>
         </div>
-
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, marginBottom: 8, letterSpacing: 0.8 }}>
-            DESCRIBE YOUR ERRAND *
-          </div>
-          <Input value={taskText} onChange={e => setTaskText(e.target.value)}
-            placeholder={errand.ex.replace('e.g. ', '')} multiline rows={3} />
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.muted, marginBottom: 6, letterSpacing: 0.5 }}>DESCRIBE YOUR ERRAND</div>
+          <Input value={taskText} onChange={e => setTaskText(e.target.value)} placeholder={errand.ex.replace('e.g. ', '')} multiline rows={3} />
         </div>
-
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, marginBottom: 8, letterSpacing: 0.8 }}>
-            📍 DELIVERY ADDRESS *
-          </div>
-          <Input value={address} onChange={e => setAddress(e.target.value)}
-            placeholder="e.g. 14 Newland Ave, Hull HU5 2RQ" icon="📍" />
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.muted, marginBottom: 6, letterSpacing: 0.5 }}>📍 YOUR ADDRESS (delivery to)</div>
+          <Input value={address} onChange={e => setAddress(e.target.value)} placeholder="e.g. 14 Newland Ave, Hull HU5 2RQ" icon="📍" />
         </div>
-
         <div>
-          <div style={{ fontSize: 11, fontWeight: 700, color: T.muted, marginBottom: 10, letterSpacing: 0.8 }}>
-            💷 SERVICE FEE
-          </div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: theme.muted, marginBottom: 8, letterSpacing: 0.5 }}>💷 SERVICE FEE BUDGET</div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {['5', '8', '10', '15', '20'].map(v => (
-              <button key={v} onClick={() => setBudget(v)} style={{
-                padding: '9px 18px', borderRadius: 12,
-                border: `2px solid ${budget === v ? errand.color : T.border}`,
-                background: budget === v ? errand.color + '20' : T.card2,
-                color: budget === v ? errand.color : T.muted,
-                fontWeight: 700, fontSize: 14, cursor: 'pointer',
-                fontFamily: "'DM Sans',sans-serif", transition: 'all 0.18s',
-                transform: budget === v ? 'scale(1.05)' : 'scale(1)',
-              }}>£{v}</button>
+              <button key={v} onClick={() => setBudget(v)} style={{ padding: '8px 16px', borderRadius: 10, border: `1.5px solid ${budget === v ? errand.color : theme.border}`, background: budget === v ? errand.color + '22' : theme.card2, color: budget === v ? errand.color : theme.muted, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                £{v}
+              </button>
             ))}
           </div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 8 }}>
-            ✓ You only pay after the task is completed
-          </div>
+          <div style={{ fontSize: 11, color: theme.muted, marginTop: 6 }}>You only pay after the task is completed ✓</div>
         </div>
-
-        <div style={{
-          background: T.primaryBg, border: `1px solid ${T.primary}25`,
-          borderRadius: 14, padding: '14px 16px',
-          display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8,
-        }}>
-          {[['⏱', 'Arrives in 30 min'], ['💳', 'Pay after completion'],
-            ['🔒', 'Fully insured'], ['✅', 'Verified Buddies']].map(([i, t]) => (
-            <div key={t} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: T.text2 }}>
-              <span>{i}</span><span>{t}</span>
-            </div>
-          ))}
+        <div style={{ background: theme.primaryBg, border: `1px solid ${theme.primary}33`, borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ fontSize: 12, color: theme.text2 }}>⏱ Buddy arrives in <strong style={{ color: theme.primary }}>within 30 minutes</strong></div>
+          <div style={{ fontSize: 12, color: theme.text2, marginTop: 4 }}>💳 Pay securely via Stripe or PayPal after completion</div>
+          <div style={{ fontSize: 12, color: theme.text2, marginTop: 4 }}>🔒 Fully insured · Verified Buddies only</div>
         </div>
-
-        {formError && (
-          <div style={{
-            background: T.redBg, border: `1.5px solid ${T.red}50`,
-            borderRadius: 12, padding: '10px 16px',
-            fontSize: 13, color: T.red,
-            display: 'flex', alignItems: 'center', gap: 8,
-            animation: 'fadeUp 0.2s ease',
-          }}>⚠️ {formError}</div>
-        )}
-
-        <Button onClick={submitJob} variant="primary" fullWidth
-          disabled={submitting} size="lg" style={{ borderRadius: 16 }}>
-          {submitting ? '⏳ Submitting...' : `Confirm & Find Buddy →`}
+        <Button onClick={() => setStep(1)} disabled={!taskText.trim() || !address.trim()} fullWidth>
+          Find a Buddy Near Me →
         </Button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, justifyContent: 'center', fontSize: 12, color: T.muted }}>
-          <span>📧</span>
-          <span>Confirmation will be sent to <strong style={{ color: T.text2 }}>{currentUser?.email}</strong></span>
-        </div>
       </div>
     </div>
   );
 
-  // ── Step 1: Choose runner ──
+  // Step 1: Choose Runner
   if (step === 1) return (
-    <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-      <div style={stickyHdr}>
-        <button onClick={() => setStep(0)} style={{
-          background: T.bg2, border: 'none', color: T.text,
-          width: 36, height: 36, borderRadius: 12, cursor: 'pointer', fontSize: 18,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>←</button>
+    <div>
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', gap: 10, background: theme.card, position: 'sticky', top: 0, zIndex: 10 }}>
+        <button onClick={() => setStep(0)} style={{ background: theme.bg2, border: 'none', color: theme.text, width: 34, height: 34, borderRadius: 10, cursor: 'pointer', fontSize: 18 }}>←</button>
         <div>
-          <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
-            Choose Your Buddy
-          </div>
-          <div style={{ fontSize: 11, color: T.muted }}>
-            {MOCK_RUNNERS.filter(r => r.online).length} available near you
-          </div>
+          <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>Choose Your Buddy</div>
+          <div style={{ fontSize: 11, color: theme.muted }}>{MOCK_RUNNERS.filter(r => r.online).length} Buddies available in Hull</div>
         </div>
       </div>
-
-      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {/* Email confirmation banner */}
-        <div style={{
-          background: 'linear-gradient(135deg, #0EA5E915, #0284C715)',
-          border: '1.5px solid #0EA5E940',
-          borderRadius: 14, padding: '12px 16px',
-          display: 'flex', alignItems: 'center', gap: 12,
-        }}>
-          <div style={{ fontSize: 28 }}>📧</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#0284C7' }}>
-              Confirmation sent!
-            </div>
-            <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
-              Check {currentUser?.email} for your booking details
-            </div>
-          </div>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ background: errand.color + '15', border: `1px solid ${errand.color}33`, borderRadius: 12, padding: '10px 14px' }}>
+          <div style={{ fontSize: 12, fontWeight: 600, color: errand.color }}>📋 {taskText}</div>
+          <div style={{ fontSize: 11, color: theme.muted, marginTop: 2 }}>📍 {address} · Budget: £{budget}</div>
         </div>
-
-        <div style={{
-          background: T.greenBg, border: `1.5px solid ${T.green}40`,
-          borderRadius: 14, padding: '12px 16px',
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 700, color: T.green }}>
-            ✅ Job submitted! Now pick your Buddy.
-          </div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 4 }}>
-            📋 {taskText} · 📍 {address} · £{budget}
-            {jobId && <span style={{ opacity: 0.6 }}> · #{jobId.slice(0, 6).toUpperCase()}</span>}
-          </div>
-        </div>
-
         {MOCK_RUNNERS.filter(r => r.online).map(r => (
-          <Card key={r.id} style={{ padding: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 14 }}>
-              <Avatar emoji={r.avatar} size={54} online={r.online} />
+          <Card key={r.id} style={{ padding: 16 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+              <Avatar emoji={r.avatar} size={52} online={r.online} />
               <div style={{ flex: 1 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
-                  <span style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
-                    {r.name}
-                  </span>
-                  {r.badge && <Badge color={T.accent}>{r.badge}</Badge>}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
+                  <span style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{r.name}</span>
+                  {r.badge && <Badge color="#F59E0B">{r.badge}</Badge>}
                 </div>
-                <div style={{ fontSize: 12, color: T.muted }}>
-                  ⭐ {r.rating} · {r.tasks} tasks · {r.zone}
-                </div>
+                <div style={{ fontSize: 12, color: theme.muted }}>⭐ {r.rating} · {r.tasks} tasks · {r.zone}</div>
               </div>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ fontSize: 26, fontWeight: 900, color: errand.color, fontFamily: "'Syne',sans-serif" }}>
-                  {r.eta}m
-                </div>
-                <div style={{ fontSize: 10, color: T.muted }}>away</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: errand.color, fontFamily: "'Syne', sans-serif" }}>{r.eta}m</div>
+                <div style={{ fontSize: 10, color: theme.muted }}>away</div>
               </div>
             </div>
-            <Button onClick={() => startTracking(r)} fullWidth style={{ borderRadius: 14 }}>
-              Book — £{budget}
-            </Button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Button onClick={() => startTracking(r)} style={{ flex: 1 }}>Book — £{budget}</Button>
+            </div>
           </Card>
         ))}
       </div>
     </div>
   );
 
-  // ── Step 15: Payment ──
-  if (step === 15) return (
-    <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-      <div style={stickyHdr}>
-        <button onClick={() => setStep(1)} style={{
-          background: T.bg2, border: 'none', color: T.text,
-          width: 36, height: 36, borderRadius: 12, cursor: 'pointer',
-          fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>←</button>
-        <div>
-          <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
-            💳 Pay & Confirm
-          </div>
-          <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
-            Buddy: {selectedRunner?.name}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 16 }}>
-        <Card style={{ padding: 16, borderLeft: `4px solid ${errand.color}` }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <Avatar emoji={selectedRunner?.avatar} size={46} online />
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 15, fontWeight: 800, color: T.text, fontFamily: "'Syne',sans-serif" }}>
-                {selectedRunner?.name}
-              </div>
-              <div style={{ fontSize: 12, color: T.muted }}>⭐ {selectedRunner?.rating} · ETA {selectedRunner?.eta} min</div>
-            </div>
-          </div>
-          <div style={{ height: 1, background: T.border, margin: '12px 0' }} />
-          <div style={{ fontSize: 12, color: T.muted }}>
-            📋 {taskText}<br/>
-            📍 {address}
-          </div>
-        </Card>
-
-        <StripePayment
-          amount={parseFloat(budget) + 0.54}
-          jobId={jobId}
-          customerEmail={currentUser?.email}
-          onSuccess={afterPayment}
-          onCancel={() => setStep(1)}
-        />
-      </div>
-    </div>
-  );
-
-  // ── Step 2: Tracking ──
+  // Step 2: Live Tracking
   if (step === 2) return (
-    <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-      <div style={{ ...stickyHdr, justifyContent: 'space-between' }}>
-        <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
-          🔴 Live Tracking
-        </div>
-        <button onClick={() => setShowChat(!showChat)} style={{
-          background: T.primaryBg, border: `1px solid ${T.primary}40`,
-          color: T.primary, borderRadius: 12, padding: '7px 14px',
-          fontWeight: 700, fontSize: 12, cursor: 'pointer',
-          fontFamily: "'DM Sans',sans-serif",
-        }}>💬 Chat</button>
+    <div>
+      <div style={{ padding: '14px 16px', borderBottom: `1px solid ${theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between', background: theme.card, position: 'sticky', top: 0, zIndex: 10 }}>
+        <div style={{ fontSize: 16, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>🔴 Live Tracking</div>
+        <button onClick={() => setShowChat(!showChat)} style={{ background: theme.primaryBg, border: `1px solid ${theme.primary}44`, color: theme.primary, borderRadius: 10, padding: '6px 12px', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>
+          💬 Chat {messages.length > 5 ? '🔴' : ''}
+        </button>
       </div>
-
-      <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-        <Card style={{
-          background: `linear-gradient(135deg,${errand.color}18,${T.card})`,
-          borderColor: errand.color + '40', padding: 20,
-        }}>
+      <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 14 }}>
+        {/* Runner Card */}
+        <Card style={{ background: `linear-gradient(135deg, ${errand.color}18, ${theme.card})`, borderColor: errand.color + '44', padding: 18 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-            <Avatar emoji={selectedRunner?.avatar} size={58} online />
+            <Avatar emoji={selectedRunner?.avatar} size={56} online />
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>
-                {selectedRunner?.name}
-              </div>
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>
-                ⭐ {selectedRunner?.rating} · Your Buddy
-              </div>
+              <div style={{ fontSize: 17, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{selectedRunner?.name}</div>
+              <div style={{ fontSize: 12, color: theme.muted }}>⭐ {selectedRunner?.rating} · Your Buddy</div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: 32, fontWeight: 900, color: errand.color, fontFamily: "'Syne',sans-serif" }}>
+              <div style={{ fontSize: 28, fontWeight: 900, color: errand.color, fontFamily: "'Syne', sans-serif" }}>
                 {Math.max(0, (selectedRunner?.eta || 8) - Math.floor(trackStep * 1.5))}m
               </div>
-              <div style={{ fontSize: 10, color: T.muted }}>ETA</div>
+              <div style={{ fontSize: 10, color: theme.muted }}>ETA</div>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-            <Button variant="secondary" style={{ flex: 1, padding: 10, borderRadius: 12 }}>📞 Call</Button>
-            <Button variant="secondary" style={{ flex: 1, padding: 10, borderRadius: 12 }}
-              onClick={() => setShowChat(!showChat)}>💬 Message</Button>
+          <div style={{ display: 'flex', gap: 8, marginTop: 14 }}>
+            <Button variant="secondary" style={{ flex: 1, padding: '9px' }}>📞 Call</Button>
+            <Button variant="secondary" style={{ flex: 1, padding: '9px' }} onClick={() => setShowChat(!showChat)}>💬 Message</Button>
           </div>
         </Card>
 
-        {/* Live map */}
-        <Card style={{ padding: 0, overflow: 'hidden' }}>
-          <MapView
-            buddyLocation={{ lat: 53.7457 + (trackStep * 0.002), lng: -0.3367 - (trackStep * 0.001) }}
-            customerLocation={{ lat: 53.7480, lng: -0.3290 }}
-            height={220}
-          />
-        </Card>
-
+        {/* Chat panel */}
         {showChat && (
-          <Card style={{ padding: 0, overflow: 'hidden', animation: 'slideDown 0.25s ease' }}>
-            <div style={{ padding: '14px 16px', borderBottom: `1px solid ${T.border}`, fontWeight: 700, fontSize: 14, color: T.text }}>
-              💬 Chat with {selectedRunner?.name}
-            </div>
-            <div style={{ maxHeight: 220, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <Card style={{ padding: 0, overflow: 'hidden' }}>
+            <div style={{ padding: '12px 14px', borderBottom: `1px solid ${theme.border}`, fontWeight: 700, fontSize: 14 }}>💬 Chat with {selectedRunner?.name}</div>
+            <div style={{ maxHeight: 200, overflowY: 'auto', padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 8 }}>
               {messages.map(m => (
                 <div key={m.id} style={{ display: 'flex', justifyContent: m.from === 'customer' ? 'flex-end' : 'flex-start' }}>
-                  <div style={{
-                    maxWidth: '76%',
-                    background: m.from === 'customer' ? errand.color : T.card2,
-                    color: m.from === 'customer' ? '#fff' : T.text,
-                    borderRadius: m.from === 'customer' ? '16px 16px 4px 16px' : '16px 16px 16px 4px',
-                    padding: '9px 14px', fontSize: 13,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.08)',
-                  }}>
-                    {m.text}
-                    <div style={{ fontSize: 10, opacity: 0.55, marginTop: 3, textAlign: 'right' }}>{m.time}</div>
+                  <div style={{ maxWidth: '75%', background: m.from === 'customer' ? errand.color : theme.card2, color: m.from === 'customer' ? '#fff' : theme.text, borderRadius: 12, padding: '8px 12px', fontSize: 13, lineHeight: 1.4 }}>
+                    <div>{m.text}</div>
+                    <div style={{ fontSize: 10, opacity: 0.6, marginTop: 3, textAlign: 'right' }}>{m.time}</div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{ padding: '10px 14px', borderTop: `1px solid ${T.border}`, display: 'flex', gap: 8 }}>
-              <Input value={chatMsg} onChange={e => setChatMsg(e.target.value)}
-                placeholder="Type a message..." style={{ fontSize: 13 }} />
-              <button onClick={sendMessage} style={{
-                background: errand.color, border: 'none', color: '#fff',
-                borderRadius: 12, padding: '0 16px', fontWeight: 700, cursor: 'pointer', fontSize: 18,
-                transition: 'opacity 0.2s',
-              }}>↑</button>
+            <div style={{ padding: '10px 14px', borderTop: `1px solid ${theme.border}`, display: 'flex', gap: 8 }}>
+              <Input value={chatMsg} onChange={e => setChatMsg(e.target.value)} placeholder="Type a message..." style={{ fontSize: 13 }} />
+              <button onClick={sendMessage} style={{ background: errand.color, border: 'none', color: '#fff', borderRadius: 10, padding: '0 14px', fontWeight: 700, cursor: 'pointer', fontSize: 18 }}>↑</button>
             </div>
           </Card>
         )}
 
+        {/* Progress Steps */}
         <Card>
-          <div style={{ fontSize: 15, fontWeight: 800, marginBottom: 16, fontFamily: "'Syne',sans-serif", color: T.text }}>
-            Live Status
-          </div>
+          <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 14, fontFamily: "'Syne', sans-serif" }}>Live Status</div>
           {TRACK_STEPS.map((s, i) => {
-            const done   = i <= trackStep;
+            const done = i <= trackStep;
             const active = i === trackStep;
             return (
-              <div key={i} style={{
-                display: 'flex', alignItems: 'center', gap: 14,
-                padding: '12px 0',
-                borderBottom: i < TRACK_STEPS.length - 1 ? `1px solid ${T.border}` : 'none',
-                transition: 'all 0.4s ease',
-              }}>
-                <div style={{
-                  width: 42, height: 42, borderRadius: '50%',
-                  background: done ? errand.color + '22' : T.bg2,
-                  border: `2.5px solid ${done ? errand.color : T.border}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: 18, flexShrink: 0, transition: 'all 0.4s',
-                  boxShadow: active ? `0 0 0 4px ${errand.color}25` : 'none',
-                }}>
-                  {done ? s.icon : <span style={{ color: T.muted, fontSize: 14 }}>○</span>}
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '10px 0', borderBottom: i < TRACK_STEPS.length - 1 ? `1px solid ${theme.border}` : 'none' }}>
+                <div style={{ width: 40, height: 40, borderRadius: '50%', background: done ? errand.color + '22' : theme.bg2, border: `2px solid ${done ? errand.color : theme.border}`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, transition: 'all 0.4s' }}>
+                  {done ? s.icon : <span style={{ color: theme.muted, fontSize: 14 }}>○</span>}
                 </div>
                 <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: done ? T.text : T.muted }}>
-                    {s.label}
-                  </div>
-                  {(done || active) && (
-                    <div style={{ fontSize: 11, color: active ? errand.color : T.green, marginTop: 2 }}>
-                      {active ? '● In progress...' : s.sub}
-                    </div>
-                  )}
+                  <div style={{ fontSize: 13, fontWeight: active ? 700 : 500, color: done ? theme.text : theme.muted }}>{s.label}</div>
+                  {(done || active) && <div style={{ fontSize: 11, color: active ? errand.color : theme.green, marginTop: 1 }}>{active ? '● In progress...' : s.sub}</div>}
                 </div>
-                {active && (
-                  <div style={{ width: 9, height: 9, borderRadius: '50%', background: errand.color, animation: 'pulse 1.2s infinite' }} />
-                )}
+                {active && <div style={{ width: 8, height: 8, borderRadius: '50%', background: errand.color, animation: 'pulse 1.2s infinite' }} />}
               </div>
             );
           })}
         </Card>
 
+        {/* Rating on complete */}
         {trackStep >= TRACK_STEPS.length - 1 && (
-          <Card style={{ background: T.greenBg, borderColor: T.green + '44', textAlign: 'center', padding: 28, animation: 'bounceIn 0.5s ease' }}>
-            <div style={{ fontSize: 52, animation: 'float 2s ease-in-out infinite' }}>🎉</div>
-            <div style={{ fontSize: 22, fontWeight: 900, color: T.green, marginTop: 10, fontFamily: "'Syne',sans-serif" }}>
-              Task Complete!
-            </div>
-            <div style={{ fontSize: 13, color: T.muted, marginTop: 6, marginBottom: 18 }}>
-              How was {selectedRunner?.name}?
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'center', gap: 10, fontSize: 34, marginBottom: 20 }}>
-              {[1, 2, 3, 4, 5].map(s => (
-                <span key={s} onClick={() => setRating(s)}
-                  style={{ cursor: 'pointer', opacity: s <= rating ? 1 : 0.25, transition: 'all 0.2s', transform: s <= rating ? 'scale(1.2)' : 'scale(1)' }}>
-                  ⭐
-                </span>
+          <Card style={{ background: theme.greenBg, borderColor: theme.green + '44', textAlign: 'center', padding: 24 }}>
+            <div style={{ fontSize: 48 }}>🎉</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: theme.green, marginTop: 8, fontFamily: "'Syne', sans-serif" }}>Task Complete!</div>
+            <div style={{ fontSize: 13, color: theme.muted, marginTop: 4, marginBottom: 14 }}>How was {selectedRunner?.name}?</div>
+            <div style={{ display: 'flex', justifyContent: 'center', gap: 8, fontSize: 32, marginBottom: 16 }}>
+              {[1,2,3,4,5].map(s => (
+                <span key={s} onClick={() => setRating(s)} style={{ cursor: 'pointer', opacity: s <= rating ? 1 : 0.3, transition: 'opacity 0.2s' }}>⭐</span>
               ))}
             </div>
-            <Button onClick={onComplete} fullWidth variant="secondary" style={{ borderRadius: 14 }}>
-              Done — Book Another Errand
-            </Button>
+            <Button onClick={onComplete} fullWidth variant="secondary">Done — Book Another Errand</Button>
           </Card>
         )}
 
+        {/* Bill Summary */}
         <Card>
-          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 12, color: T.muted, letterSpacing: 0.8 }}>
-            PAYMENT SUMMARY
-          </div>
-          {[['Service fee', `£${budget}`], ['Processing fee', '£0.54'], ['Total', `£${(parseFloat(budget) + 0.54).toFixed(2)}`]].map(([k, v], i) => (
-            <div key={k} style={{
-              display: 'flex', justifyContent: 'space-between',
-              fontSize: i === 2 ? 15 : 13, fontWeight: i === 2 ? 800 : 400,
-              padding: '6px 0', borderTop: i === 2 ? `1px solid ${T.border}` : 'none',
-              marginTop: i === 2 ? 6 : 0,
-            }}>
-              <span style={{ color: T.muted }}>{k}</span>
-              <span style={{ color: i === 2 ? errand.color : T.text }}>{v}</span>
+          <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10, color: theme.muted, letterSpacing: 0.5 }}>PAYMENT SUMMARY</div>
+          {[['Service fee', `£${budget}`], ['Stripe/PayPal fee', '£0.54'], ['Total', `£${(parseFloat(budget) + 0.54).toFixed(2)}`]].map(([k, v], i) => (
+            <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: i === 2 ? 15 : 13, fontWeight: i === 2 ? 800 : 400, padding: '5px 0', borderTop: i === 2 ? `1px solid ${theme.border}` : 'none', marginTop: i === 2 ? 6 : 0 }}>
+              <span style={{ color: theme.muted }}>{k}</span>
+              <span style={{ color: i === 2 ? errand.color : theme.text }}>{v}</span>
             </div>
           ))}
         </Card>
       </div>
     </div>
   );
-
-  return null;
 }
 
 export default function CustomerApp() {
-  const { theme: T, isDark, toggleTheme } = useTheme();
-  const { currentUser } = useAuth();
-  const [tab, setTab]               = useState('home');
+  const { theme, isDark, toggleTheme } = useTheme();
+  const [tab, setTab] = useState('home');
   const [bookingErrand, setBookingErrand] = useState(null);
+  const [cartCount] = useState(0);
+
+  const handleSelectErrand = (errand) => {
+    setBookingErrand(errand);
+    setTab('book');
+  };
 
   return (
-    <div style={{ background: T.bg, minHeight: '100vh', width: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ background: theme.bg, minHeight: '100vh', width: '100%', display: 'flex', flexDirection: 'column', position: 'relative' }}>
+      <style>{`
+        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(1.5)} }
+        @keyframes fadeIn { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:none} }
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { display: none; }
+      `}</style>
 
       <div style={{ flex: 1, overflowY: 'auto' }}>
 
-        {/* ── HOME ── */}
+        {/* HOME TAB */}
         {tab === 'home' && (
-          <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-            <div style={{
-              padding: '16px 18px 14px', background: T.card,
-              borderBottom: `1px solid ${T.border}`,
-              position: 'sticky', top: 0, zIndex: 100,
-              backdropFilter: 'blur(16px)',
-            }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            {/* Header */}
+            <div style={{ padding: '16px 16px 12px', background: theme.card, borderBottom: `1px solid ${theme.border}`, position: 'sticky', top: 0, zIndex: 100, backdropFilter: 'blur(12px)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
                 <div>
-                  <div style={{
-                    fontSize: 26, fontWeight: 900,
-                    background: `linear-gradient(135deg,${T.primary},${T.primaryLight})`,
-                    WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
-                    fontFamily: "'Syne',sans-serif", letterSpacing: '-0.5px',
-                  }}>OnlyBuddy 🤝</div>
-                  <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>
-                    📍 Hull · {MOCK_RUNNERS.filter(r => r.online).length} Buddies online
-                  </div>
+                  <div style={{ fontSize: 24, fontWeight: 900, color: theme.primary, fontFamily: "'Syne', sans-serif", letterSpacing: -0.5 }}>OnlyBuddy 🤝</div>
+                  <div style={{ fontSize: 11, color: theme.muted }}>📍 Hull · {MOCK_RUNNERS.filter(r => r.online).length} Buddies online</div>
                 </div>
                 <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={toggleTheme} style={{
-                    background: T.bg2, border: `1px solid ${T.border}`,
-                    borderRadius: 12, width: 36, height: 36, cursor: 'pointer',
-                    fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>{isDark ? '☀️' : '🌙'}</button>
-                  <button onClick={() => setTab('profile')} style={{
-                    background: T.primaryBg, border: `1px solid ${T.primary}30`,
-                    borderRadius: 12, padding: '6px 14px', color: T.primary,
-                    fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                    fontFamily: "'DM Sans',sans-serif",
-                  }}>{currentUser?.email?.split('@')[0]}</button>
+                  <button onClick={toggleTheme} style={{ background: theme.bg2, border: `1px solid ${theme.border}`, borderRadius: 10, width: 34, height: 34, cursor: 'pointer', fontSize: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{isDark ? '☀️' : '🌙'}</button>
+                  <button style={{ background: theme.primaryBg, border: `1px solid ${theme.primary}33`, borderRadius: 10, padding: '6px 12px', color: theme.primary, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}>Sign In</button>
                 </div>
               </div>
               <Input placeholder='Search "groceries", "pharmacy"...' icon="🔍" />
             </div>
 
-            <div style={{ padding: '16px 18px 90px', display: 'flex', flexDirection: 'column', gap: 22 }} className="ob-stagger">
-              {/* Hero */}
-              <div style={{
-                borderRadius: 24, overflow: 'hidden', position: 'relative',
-                background: `linear-gradient(135deg, ${T.primary} 0%, ${T.primaryDark} 55%, #3730A3 100%)`,
-                padding: '28px 24px', minHeight: 180,
-              }}>
-                <div style={{ position: 'absolute', inset: 0, background: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23ffffff\' fill-opacity=\'0.04\'%3E%3Ccircle cx=\'30\' cy=\'30\' r=\'20\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")', pointerEvents: 'none' }} />
-                <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.65)', letterSpacing: 1.5, marginBottom: 8 }}>
-                  HULL'S ERRAND APP
+            <div style={{ padding: '14px 16px 80px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+              {/* Hero Banner */}
+              <div style={{ borderRadius: 20, background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, padding: '22px 20px', position: 'relative', overflow: 'hidden' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.65)', letterSpacing: 1.2 }}>HULL'S ERRAND APP</div>
+                <div style={{ fontSize: 28, fontWeight: 900, color: '#fff', lineHeight: 1.15, marginTop: 6, fontFamily: "'Syne', sans-serif" }}>Send a Buddy<br />in <span style={{ textDecoration: 'underline', textDecorationColor: 'rgba(255,255,255,0.5)' }}>30 minutes</span></div>
+                <div style={{ marginTop: 8, fontSize: 12, color: 'rgba(255,255,255,0.8)' }}>Errands · Groceries · Prescriptions · Queues</div>
+                <div style={{ marginTop: 14 }}>
+                  <Button onClick={() => setTab('book')} style={{ background: '#fff', color: theme.primary, boxShadow: 'none', padding: '9px 20px', fontSize: 13 }}>Book a Buddy →</Button>
                 </div>
-                <div style={{ fontSize: 30, fontWeight: 900, color: '#fff', lineHeight: 1.1, fontFamily: "'Syne',sans-serif", marginBottom: 10 }}>
-                  Send a Buddy<br/>in <span style={{ textDecoration: 'underline', textDecorationColor: 'rgba(255,255,255,0.4)' }}>30 minutes</span>
-                </div>
-                <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.75)', marginBottom: 20 }}>
-                  Errands · Groceries · Prescriptions · Queues
-                </div>
-                <button onClick={() => setTab('book')} style={{
-                  background: '#fff', color: T.primary, borderRadius: 14, border: 'none',
-                  padding: '11px 22px', fontWeight: 800, fontSize: 13, cursor: 'pointer',
-                  fontFamily: "'DM Sans',sans-serif",
-                  boxShadow: '0 4px 16px rgba(0,0,0,0.2)',
-                  transition: 'transform 0.2s',
-                }}>Book a Buddy →</button>
-                <div style={{ position: 'absolute', right: -5, bottom: -10, fontSize: 90, opacity: 0.1 }}>🤝</div>
+                <div style={{ position: 'absolute', right: -8, bottom: -10, fontSize: 80, opacity: 0.15 }}>🤝</div>
               </div>
 
-              {/* Errand types */}
+              {/* Errand Types */}
               <div>
                 <SectionTitle>What do you need?</SectionTitle>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                  {ERRAND_TYPES.map(e => (
-                    <Card key={e.id}
-                      onClick={() => { setBookingErrand(e); setTab('book'); }}
-                      style={{ borderLeft: `4px solid ${e.color}`, padding: 16, cursor: 'pointer' }}>
-                      <div style={{ fontSize: 30 }}>{e.icon}</div>
-                      <div style={{ fontSize: 13, fontWeight: 800, color: T.text, marginTop: 10, fontFamily: "'Syne',sans-serif" }}>
-                        {e.label}
-                      </div>
-                      <div style={{ fontSize: 11, color: T.muted, marginTop: 4, lineHeight: 1.5 }}>{e.desc}</div>
-                    </Card>
-                  ))}
-                </div>
+                <ErrandTypeGrid onSelect={handleSelectErrand} />
               </div>
 
-              {/* Live */}
+              {/* Live Activity */}
               <div>
-                <SectionTitle>🔴 Live in Hull</SectionTitle>
+                <SectionTitle action="See all">🔴 Live in Hull</SectionTitle>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                   {MOCK_ORDERS.slice(0, 4).map(o => {
                     const et = ERRAND_TYPES.find(e => e.id === o.type);
                     return (
-                      <Card key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 14, padding: 14 }}>
-                        <div style={{ fontSize: 28 }}>{et?.icon}</div>
+                      <Card key={o.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: 14 }}>
+                        <div style={{ fontSize: 26, width: 36, textAlign: 'center' }}>{et?.icon}</div>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: T.text }}>{o.title}</div>
-                          <div style={{ fontSize: 11, color: T.muted, marginTop: 1 }}>{o.customer} · {o.time}</div>
+                          <div style={{ fontSize: 13, fontWeight: 600 }}>{o.title}</div>
+                          <div style={{ fontSize: 11, color: theme.muted, marginTop: 1 }}>{o.customer} · {o.time}</div>
                         </div>
                         <div style={{ textAlign: 'right' }}>
                           <StatusBadge status={o.status} />
-                          <div style={{ fontSize: 14, fontWeight: 800, marginTop: 5, color: T.text }}>
-                            £{o.total.toFixed(2)}
-                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 4 }}>£{o.total.toFixed(2)}</div>
                         </div>
                       </Card>
                     );
                   })}
                 </div>
               </div>
+
+              {/* Pricing */}
+              <Card style={{ background: theme.primaryBg, borderColor: theme.primary + '33' }}>
+                <SectionTitle>💷 Transparent Pricing</SectionTitle>
+                {[['Basic errand (under 30 min)', 'from £4.50'], ['Shop & deliver', 'from £6 + item cost'], ['Queue holding', '£10/hr'], ['Prescription collection', '£5.00 flat'], ['Free delivery', 'within 2 miles']].map(([k, v]) => (
+                  <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: `1px solid ${theme.border}` }}>
+                    <span style={{ color: theme.text2 }}>{k}</span><span style={{ fontWeight: 700, color: theme.primary }}>{v}</span>
+                  </div>
+                ))}
+              </Card>
             </div>
           </div>
         )}
 
-        {/* ── BOOK ── */}
+        {/* BOOK TAB */}
         {tab === 'book' && (
-          <div style={{ animation: 'fadeUp 0.3s ease both' }}>
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
             {!bookingErrand ? (
               <div>
-                <div style={{ padding: '16px 18px 14px', background: T.card, borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 100 }}>
-                  <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "'Syne',sans-serif", color: T.text }}>New Errand</div>
-                  <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Choose what you need done</div>
+                <div style={{ padding: '16px 16px 12px', background: theme.card, borderBottom: `1px solid ${theme.border}`, position: 'sticky', top: 0, zIndex: 100 }}>
+                  <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>New Errand</div>
+                  <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Choose what you need done</div>
                 </div>
-                <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }} className="ob-stagger">
+                <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
                   {ERRAND_TYPES.map(e => (
-                    <Card key={e.id} onClick={() => setBookingErrand(e)}
-                      style={{ display: 'flex', alignItems: 'center', gap: 16, borderLeft: `4px solid ${e.color}`, padding: 18, cursor: 'pointer' }}>
-                      <div style={{ fontSize: 36 }}>{e.icon}</div>
+                    <Card key={e.id} onClick={() => setBookingErrand(e)} style={{ display: 'flex', alignItems: 'center', gap: 14, borderLeft: `4px solid ${e.color}`, padding: 16 }}>
+                      <div style={{ fontSize: 34 }}>{e.icon}</div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 15, fontWeight: 800, fontFamily: "'Syne',sans-serif", color: T.text }}>{e.label}</div>
-                        <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>{e.ex}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700, fontFamily: "'Syne', sans-serif" }}>{e.label}</div>
+                        <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>{e.ex}</div>
                       </div>
-                      <span style={{ color: T.muted, fontSize: 22 }}>›</span>
+                      <span style={{ color: theme.muted, fontSize: 20 }}>›</span>
                     </Card>
                   ))}
                 </div>
               </div>
             ) : (
-              <BookingFlow errand={bookingErrand}
-                onBack={() => setBookingErrand(null)}
-                onComplete={() => { setBookingErrand(null); setTab('home'); }} />
+              <BookingFlow errand={bookingErrand} onBack={() => setBookingErrand(null)} onComplete={() => { setBookingErrand(null); setTab('home'); }} />
             )}
           </div>
         )}
 
-        {/* ── ORDERS ── */}
+        {/* ORDERS TAB */}
         {tab === 'orders' && (
-          <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-            <div style={{ padding: '16px 18px', background: T.card, borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 100 }}>
-              <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "'Syne',sans-serif", color: T.text }}>My Orders</div>
-              <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>All your past and live errands</div>
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ padding: '16px 16px 12px', background: theme.card, borderBottom: `1px solid ${theme.border}`, position: 'sticky', top: 0, zIndex: 100 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>My Orders</div>
+              <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>All your past and live errands</div>
             </div>
-            <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 10 }} className="ob-stagger">
+            <div style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 10 }}>
               {MOCK_ORDERS.map(o => {
                 const et = ERRAND_TYPES.find(e => e.id === o.type);
                 return (
-                  <Card key={o.id} style={{ padding: 18 }}>
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 14 }}>
-                      <div style={{ fontSize: 30, marginTop: 2 }}>{et?.icon}</div>
+                  <Card key={o.id} style={{ padding: 16 }}>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                      <div style={{ fontSize: 28, width: 40, textAlign: 'center', marginTop: 2 }}>{et?.icon}</div>
                       <div style={{ flex: 1 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: T.text }}>{o.title}</div>
-                        <div style={{ fontSize: 12, color: T.muted, marginTop: 3 }}>Buddy: {o.runner} · {o.time}</div>
-                        <div style={{ fontSize: 11, color: T.muted, marginTop: 2 }}>📍 {o.address}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>{o.title}</div>
+                        <div style={{ fontSize: 12, color: theme.muted, marginTop: 2 }}>Buddy: {o.runner} · {o.time}</div>
+                        <div style={{ fontSize: 11, color: theme.muted, marginTop: 1 }}>📍 {o.address}</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: T.primary }}>£{o.total.toFixed(2)}</div>
-                        <div style={{ marginTop: 5 }}><StatusBadge status={o.status} /></div>
+                        <div style={{ fontSize: 15, fontWeight: 800, color: theme.primary }}>£{o.total.toFixed(2)}</div>
+                        <div style={{ marginTop: 4 }}><StatusBadge status={o.status} /></div>
                       </div>
                     </div>
                   </Card>
@@ -699,61 +392,51 @@ export default function CustomerApp() {
           </div>
         )}
 
-        {/* ── PROFILE ── */}
+        {/* PROFILE TAB */}
         {tab === 'profile' && (
-          <div style={{ animation: 'fadeUp 0.3s ease both' }}>
-            <div style={{ padding: '16px 18px', background: T.card, borderBottom: `1px solid ${T.border}`, position: 'sticky', top: 0, zIndex: 100 }}>
-              <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "'Syne',sans-serif", color: T.text }}>My Profile</div>
+          <div style={{ animation: 'fadeIn 0.3s ease' }}>
+            <div style={{ padding: '16px 16px 12px', background: theme.card, borderBottom: `1px solid ${theme.border}`, position: 'sticky', top: 0, zIndex: 100 }}>
+              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>My Profile</div>
             </div>
-            <div style={{ padding: 18, display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <Card style={{ textAlign: 'center', padding: 28 }}>
-                <div style={{ fontSize: 58, animation: 'float 3s ease-in-out infinite' }}>👤</div>
-                <div style={{ fontSize: 20, fontWeight: 900, fontFamily: "'Syne',sans-serif", color: T.text, marginTop: 10 }}>
-                  {currentUser?.email?.split('@')[0]}
+            <div style={{ padding: 16 }}>
+              <Card style={{ textAlign: 'center', padding: 24, marginBottom: 14 }}>
+                <div style={{ fontSize: 60, marginBottom: 10 }}>👤</div>
+                <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>Guest User</div>
+                <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>Hull, HU5</div>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+                  <Button variant="ghost" size="sm">Sign In with Google</Button>
+                  <Button size="sm">Sign Up</Button>
                 </div>
-                <div style={{ fontSize: 13, color: T.muted, marginTop: 4 }}>{currentUser?.email}</div>
-                <div style={{ fontSize: 12, color: T.muted, marginTop: 2 }}>Hull, HU5</div>
               </Card>
-              <Card>
+              <Card style={{ marginBottom: 10 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>Account Settings</div>
                 {['Notification preferences', 'Payment methods', 'Saved addresses', 'Help & support', 'About OnlyBuddy'].map(item => (
-                  <div key={item} style={{
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    padding: '14px 0', borderBottom: `1px solid ${T.border}`,
-                    fontSize: 14, color: T.text2, cursor: 'pointer',
-                    transition: 'opacity 0.2s',
-                  }}>
-                    <span>{item}</span><span style={{ color: T.muted }}>›</span>
+                  <div key={item} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: `1px solid ${theme.border}`, fontSize: 14, color: theme.text2, cursor: 'pointer' }}>
+                    <span>{item}</span><span style={{ color: theme.muted }}>›</span>
                   </div>
                 ))}
               </Card>
-              <button onClick={toggleTheme} style={{
-                background: T.card2, border: `1px solid ${T.border}`,
-                borderRadius: 14, padding: '12px 20px', color: T.text2,
-                fontSize: 13, fontWeight: 600, cursor: 'pointer',
-                fontFamily: "'DM Sans',sans-serif", width: '100%',
-              }}>{isDark ? '☀️ Light Mode' : '🌙 Dark Mode'}</button>
+              <div style={{ textAlign: 'center', marginTop: 16 }}>
+                <button onClick={toggleTheme} style={{ background: theme.card2, border: `1px solid ${theme.border}`, borderRadius: 12, padding: '10px 20px', color: theme.text2, fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  {isDark ? '☀️ Switch to Light Mode' : '🌙 Switch to Dark Mode'}
+                </button>
+              </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* Bottom nav */}
-      <nav style={{
-        position: 'sticky', bottom: 0, width: '100%',
-        background: T.navBg, borderTop: `1px solid ${T.border}`,
-        display: 'flex', backdropFilter: 'blur(16px)', zIndex: 200,
-      }}>
-        {[{ id: 'home', icon: '🏠', label: 'Home' }, { id: 'book', icon: '⚡', label: 'Book' },
-          { id: 'orders', icon: '📋', label: 'Orders' }, { id: 'profile', icon: '👤', label: 'Profile' }].map(t => (
-          <button key={t.id}
-            onClick={() => { setTab(t.id); if (t.id !== 'book') setBookingErrand(null); }}
-            className={`ob-nav-btn ${tab === t.id ? 'active' : ''}`}
-            style={{
-              color: tab === t.id ? T.primary : T.muted,
-              borderTop: tab === t.id ? `2.5px solid ${T.primary}` : '2.5px solid transparent',
-            }}>
-            <span className="nav-icon">{t.icon}</span>
-            <span className="nav-label">{t.label}</span>
+      {/* Bottom Nav */}
+      <nav style={{ position: 'sticky', bottom: 0, width: '100%', background: theme.navBg, borderTop: `1px solid ${theme.border}`, display: 'flex', backdropFilter: 'blur(12px)', zIndex: 200 }}>
+        {[
+          { id: 'home',    icon: '🏠', label: 'Home' },
+          { id: 'book',    icon: '⚡', label: 'Book' },
+          { id: 'orders',  icon: '📋', label: 'Orders' },
+          { id: 'profile', icon: '👤', label: 'Profile' },
+        ].map(t => (
+          <button key={t.id} onClick={() => { setTab(t.id); if (t.id !== 'book') setBookingErrand(null); }} style={{ flex: 1, padding: '10px 4px 12px', background: 'none', border: 'none', color: tab === t.id ? theme.primary : theme.muted, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3, cursor: 'pointer', transition: 'color 0.2s', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+            <span style={{ fontSize: 22 }}>{t.icon}</span>
+            <span style={{ fontSize: 10, fontWeight: tab === t.id ? 700 : 500 }}>{t.label}</span>
           </button>
         ))}
       </nav>

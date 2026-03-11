@@ -1,155 +1,188 @@
 import { useTheme } from '../contexts/ThemeContext';
 
-export function Card({ children, style={}, onClick }) {
-  const { theme: T } = useTheme();
+export function Card({ children, style = {}, onClick }) {
+  const { theme } = useTheme();
   return (
     <div onClick={onClick} style={{
-      background:T.card, border:`1px solid ${T.border}`,
-      borderRadius:16, padding:16,
+      background: theme.card, border: `1px solid ${theme.border}`,
+      borderRadius: 16, padding: 16,
       cursor: onClick ? 'pointer' : 'default',
-      transition:'box-shadow 0.2s, transform 0.18s',
-      boxShadow:'0 1px 4px rgba(0,0,0,0.06)',
+      transition: 'box-shadow 0.2s, transform 0.15s',
       ...style
     }}
-    onMouseEnter={e=>{ if(onClick){ e.currentTarget.style.boxShadow=T.shadow; e.currentTarget.style.transform='translateY(-2px)'; }}}
-    onMouseLeave={e=>{ e.currentTarget.style.boxShadow='0 1px 4px rgba(0,0,0,0.06)'; e.currentTarget.style.transform='none'; }}>
+    onMouseEnter={e => { if (onClick) { e.currentTarget.style.boxShadow = theme.shadow; e.currentTarget.style.transform = 'translateY(-1px)'; }}}
+    onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none'; }}
+    >
       {children}
     </div>
   );
 }
 
-export function Badge({ children, color }) {
+export function Badge({ children, color, bg }) {
   return (
-    <span style={{ display:'inline-flex', alignItems:'center',
-      padding:'3px 9px', borderRadius:20, fontSize:10, fontWeight:700,
-      letterSpacing:0.3, background: color+'22', color,
-      border:`1px solid ${color}44`, whiteSpace:'nowrap',
-      fontFamily:"'DM Sans',sans-serif" }}>
-      {children}
-    </span>
+    <span style={{
+      display: 'inline-flex', alignItems: 'center',
+      padding: '2px 8px', borderRadius: 20,
+      fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+      background: bg || color + '22',
+      color: color,
+      border: `1px solid ${color}44`,
+    }}>{children}</span>
   );
 }
 
-export function Button({ children, onClick, variant='primary', size='md', fullWidth, disabled, style={} }) {
-  const { theme: T } = useTheme();
-  const sizes = {
-    sm: { padding:'7px 14px', fontSize:13 },
-    md: { padding:'12px 22px', fontSize:14 },
-    lg: { padding:'15px 32px', fontSize:16 },
-  };
+export function Button({ children, onClick, variant = 'primary', size = 'md', fullWidth, disabled, style = {} }) {
+  const { theme } = useTheme();
+  const sizes = { sm: { padding: '7px 14px', fontSize: 13 }, md: { padding: '12px 24px', fontSize: 15 }, lg: { padding: '15px 32px', fontSize: 16 } };
   const variants = {
-    primary:   { background:`linear-gradient(135deg,${T.primary},${T.primaryDark})`, color:'#fff', border:'none', boxShadow:`0 4px 16px ${T.primaryHex}44` },
-    secondary: { background:T.card2, color:T.text2, border:`1px solid ${T.border}`, boxShadow:'none' },
-    ghost:     { background:'transparent', color:T.primary, border:`1px solid ${T.border}`, boxShadow:'none' },
-    danger:    { background:T.red, color:'#fff', border:'none', boxShadow:`0 4px 16px ${T.redHex}44` },
+    primary: { background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', border: 'none', boxShadow: `0 4px 16px ${theme.primary}44` },
+    secondary: { background: theme.card2, color: theme.text2, border: `1px solid ${theme.border}`, boxShadow: 'none' },
+    ghost: { background: 'transparent', color: theme.primary, border: `1px solid ${theme.primary}44`, boxShadow: 'none' },
+    danger: { background: theme.red, color: '#fff', border: 'none', boxShadow: `0 4px 16px ${theme.red}44` },
   };
   return (
     <button onClick={onClick} disabled={disabled} style={{
       ...sizes[size], ...variants[variant],
-      borderRadius:12, fontWeight:700,
-      fontFamily:"'DM Sans',sans-serif",
+      borderRadius: 12, fontWeight: 700,
+      fontFamily: "'Plus Jakarta Sans', sans-serif",
       cursor: disabled ? 'not-allowed' : 'pointer',
       opacity: disabled ? 0.45 : 1,
       width: fullWidth ? '100%' : 'auto',
-      transition:'all 0.18s', display:'inline-flex',
-      alignItems:'center', justifyContent:'center', gap:6,
-      ...style }}
-    onMouseEnter={e=>{ if(!disabled) e.currentTarget.style.opacity='0.88'; }}
-    onMouseLeave={e=>{ if(!disabled) e.currentTarget.style.opacity='1'; }}>
+      transition: 'all 0.18s',
+      ...style
+    }}
+    onMouseEnter={e => { if (!disabled) e.currentTarget.style.opacity = '0.88'; }}
+    onMouseLeave={e => { if (!disabled) e.currentTarget.style.opacity = '1'; }}
+    >
       {children}
     </button>
   );
 }
 
-export function Input({ value, onChange, placeholder, type='text', multiline, rows=3, icon, style={} }) {
-  const { theme: T } = useTheme();
+export function Input({ value, onChange, placeholder, type = 'text', multiline, rows = 3, icon, style = {} }) {
+  const { theme } = useTheme();
   const base = {
-    width:'100%', background:T.card2, border:`1.5px solid ${T.border}`,
-    borderRadius:10, padding: icon ? '11px 14px 11px 40px' : '11px 14px',
-    color:T.text, fontSize:14, fontFamily:"'DM Sans',sans-serif",
-    outline:'none', resize:'vertical', transition:'border-color 0.2s, box-shadow 0.2s',
-    ...style,
+    width: '100%', background: theme.card2,
+    border: `1.5px solid ${theme.border}`,
+    borderRadius: 12, padding: icon ? '11px 14px 11px 40px' : '11px 14px',
+    color: theme.text, fontSize: 14,
+    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    outline: 'none', resize: 'vertical', transition: 'border-color 0.2s',
+    ...style
   };
   return (
-    <div style={{ position:'relative' }}>
-      {icon && <span style={{ position:'absolute', left:13, top: multiline?13:'50%',
-        transform: multiline?'none':'translateY(-50%)', fontSize:16 }}>{icon}</span>}
+    <div style={{ position: 'relative' }}>
+      {icon && <span style={{ position: 'absolute', left: 13, top: '50%', transform: 'translateY(-50%)', fontSize: 16 }}>{icon}</span>}
       {multiline
-        ? <textarea value={value} onChange={onChange} placeholder={placeholder}
-            rows={rows} style={base}
-            onFocus={e=>{ e.target.style.borderColor=T.primary; e.target.style.boxShadow=`0 0 0 3px ${T.primaryHex}22`; }}
-            onBlur={e=>{ e.target.style.borderColor=T.border; e.target.style.boxShadow='none'; }} />
-        : <input type={type} value={value} onChange={onChange}
-            placeholder={placeholder} style={base}
-            onFocus={e=>{ e.target.style.borderColor=T.primary; e.target.style.boxShadow=`0 0 0 3px ${T.primaryHex}22`; }}
-            onBlur={e=>{ e.target.style.borderColor=T.border; e.target.style.boxShadow='none'; }} />
+        ? <textarea value={value} onChange={onChange} placeholder={placeholder} rows={rows} style={base} onFocus={e => e.target.style.borderColor = theme.primary} onBlur={e => e.target.style.borderColor = theme.border} />
+        : <input type={type} value={value} onChange={onChange} placeholder={placeholder} style={base} onFocus={e => e.target.style.borderColor = theme.primary} onBlur={e => e.target.style.borderColor = theme.border} />
       }
     </div>
   );
 }
 
-export function Avatar({ emoji, size=40, online }) {
-  const { theme: T } = useTheme();
+export function Avatar({ emoji, size = 40, online }) {
+  const { theme } = useTheme();
   return (
-    <div style={{ position:'relative', flexShrink:0 }}>
-      <div style={{ width:size, height:size, borderRadius:'50%',
-        background:T.primaryBg, border:`2px solid ${T.border}`,
-        display:'flex', alignItems:'center', justifyContent:'center',
-        fontSize:size*0.48 }}>
-        {emoji}
-      </div>
+    <div style={{ position: 'relative', flexShrink: 0 }}>
+      <div style={{
+        width: size, height: size, borderRadius: '50%',
+        background: theme.primaryBg, border: `2px solid ${theme.border}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        fontSize: size * 0.48,
+      }}>{emoji}</div>
       {online !== undefined && (
-        <div style={{ position:'absolute', bottom:1, right:1,
-          width:11, height:11, borderRadius:'50%',
-          background: online ? T.green : T.muted,
-          border:`2px solid ${T.card}` }} />
+        <div style={{
+          position: 'absolute', bottom: 1, right: 1,
+          width: 10, height: 10, borderRadius: '50%',
+          background: online ? theme.green : theme.muted,
+          border: `2px solid ${theme.card}`,
+        }} />
       )}
     </div>
   );
 }
 
 export function StatusBadge({ status }) {
-  const { theme: T } = useTheme();
+  const { theme } = useTheme();
   const map = {
-    delivered:   { label:'Delivered',  color:T.green },
-    in_progress: { label:'Live',       color:T.primary },
-    placed:      { label:'Placed',     color:T.accent },
-    searching:   { label:'Searching',  color:T.accent },
-    accepted:    { label:'Accepted',   color:T.primary },
-    cancelled:   { label:'Cancelled',  color:T.red },
+    delivered:    { label: 'Delivered',    color: theme.green },
+    in_progress:  { label: 'Live',         color: theme.primary },
+    placed:       { label: 'Placed',       color: theme.accent },
+    cancelled:    { label: 'Cancelled',    color: theme.red },
   };
-  const s = map[status] || { label:status, color:T.muted };
-  return <Badge color={s.color}>{status==='in_progress'?'● ':''}{s.label}</Badge>;
+  const s = map[status] || { label: status, color: theme.muted };
+  return <Badge color={s.color}>{status === 'in_progress' ? '● ' : ''}{s.label}</Badge>;
+}
+
+export function Divider({ style = {} }) {
+  const { theme } = useTheme();
+  return <div style={{ height: 1, background: theme.border, margin: '12px 0', ...style }} />;
 }
 
 export function SectionTitle({ children, action }) {
-  const { theme: T } = useTheme();
+  const { theme } = useTheme();
   return (
-    <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:12 }}>
-      <h2 style={{ fontSize:17, fontWeight:800, color:T.text, fontFamily:"'Syne',sans-serif", margin:0 }}>
-        {children}
-      </h2>
-      {action && <span onClick={action.fn}
-        style={{ fontSize:13, color:T.primary, fontWeight:600, cursor:'pointer', opacity:0.85 }}>
-        {action.label || action}
-      </span>}
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+      <h2 style={{ fontSize: 17, fontWeight: 800, color: theme.text, fontFamily: "'Syne', sans-serif" }}>{children}</h2>
+      {action && <span style={{ fontSize: 13, color: theme.primary, fontWeight: 600, cursor: 'pointer' }}>{action}</span>}
     </div>
   );
 }
 
-export function Divider({ style={} }) {
-  const { theme: T } = useTheme();
-  return <div style={{ height:1, background:T.border, margin:'12px 0', ...style }} />;
+export function BottomNav({ tabs, active, onSelect }) {
+  const { theme } = useTheme();
+  return (
+    <nav style={{
+      position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
+      width: '100%', maxWidth: 480,
+      background: theme.navBg, borderTop: `1px solid ${theme.border}`,
+      display: 'flex', backdropFilter: 'blur(12px)',
+      zIndex: 200, paddingBottom: 'env(safe-area-inset-bottom)',
+    }}>
+      {tabs.map(t => (
+        <button key={t.id} onClick={() => onSelect(t.id)} style={{
+          flex: 1, padding: '10px 4px 12px',
+          background: 'none', border: 'none',
+          color: active === t.id ? theme.primary : theme.muted,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 3,
+          cursor: 'pointer', transition: 'color 0.2s',
+          fontFamily: "'Plus Jakarta Sans', sans-serif",
+        }}>
+          <div style={{ position: 'relative' }}>
+            <span style={{ fontSize: 22 }}>{t.icon}</span>
+            {t.badge > 0 && (
+              <span style={{ position: 'absolute', top: -4, right: -6, background: theme.primary, color: '#fff', borderRadius: 10, fontSize: 9, fontWeight: 700, padding: '1px 5px', minWidth: 16, textAlign: 'center' }}>{t.badge}</span>
+            )}
+          </div>
+          <span style={{ fontSize: 10, fontWeight: active === t.id ? 700 : 500 }}>{t.label}</span>
+        </button>
+      ))}
+    </nav>
+  );
 }
 
-export function Spinner() {
-  const { theme: T } = useTheme();
+export function TopBar({ title, subtitle, onBack, rightEl, theme }) {
   return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', padding:40 }}>
-      <div style={{ width:32, height:32, borderRadius:'50%',
-        border:`3px solid ${T.primaryBg}`,
-        borderTop:`3px solid ${T.primary}`,
-        animation:'spin 0.8s linear infinite' }} />
+    <div style={{
+      padding: '14px 16px 10px',
+      borderBottom: `1px solid ${theme.border}`,
+      background: theme.card,
+      position: 'sticky', top: 0, zIndex: 100,
+      backdropFilter: 'blur(12px)',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          {onBack && (
+            <button onClick={onBack} style={{ background: theme.bg2, border: 'none', color: theme.text, width: 34, height: 34, borderRadius: 10, cursor: 'pointer', fontSize: 18, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>←</button>
+          )}
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: theme.text, fontFamily: "'Syne', sans-serif", lineHeight: 1.2 }}>{title}</div>
+            {subtitle && <div style={{ fontSize: 11, color: theme.muted, marginTop: 1 }}>{subtitle}</div>}
+          </div>
+        </div>
+        {rightEl}
+      </div>
     </div>
   );
 }

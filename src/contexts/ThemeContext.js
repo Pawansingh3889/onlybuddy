@@ -1,53 +1,38 @@
 import { createContext, useContext, useState, useEffect } from 'react';
 
-const ThemeContext = createContext();
-
-export const themes = {
-  light: {
-    bg:'#F8F7FF', bg2:'#EFECFD', card:'#FFFFFF', card2:'#F9F8FF',
-    border:'#E4E0F5', borderStrong:'#C9C3E8',
-    text:'#1A1035', text2:'#3D3465', muted:'#8B84A8',
-    primary:'#6D28D9', primaryLight:'#8B5CF6', primaryDark:'#5B21B6',
-    primaryBg:'#EDE9FE', primaryHex:'#6D28D9',
-    accent:'#F59E0B', accentBg:'#FFFBEB',
-    green:'#059669', greenBg:'#ECFDF5', greenHex:'#059669',
-    red:'#DC2626', redBg:'#FEF2F2', redHex:'#DC2626',
-    shadow:'0 6px 24px rgba(109,40,217,0.12)',
-    shadowSm:'0 2px 8px rgba(109,40,217,0.08)',
-    navBg:'rgba(255,255,255,0.94)',
-  },
-  dark: {
-    bg:'#0C0A18', bg2:'#13102A', card:'#191629', card2:'#211D34',
-    border:'#2C2750', borderStrong:'#3D3870',
-    text:'#EDE9FF', text2:'#C5BFDF', muted:'#6E6890',
-    primary:'#8B5CF6', primaryLight:'#A78BFA', primaryDark:'#7C3AED',
-    primaryBg:'#1E1633', primaryHex:'#8B5CF6',
-    accent:'#FBBF24', accentBg:'#1C1505',
-    green:'#10B981', greenBg:'#052E1C', greenHex:'#10B981',
-    red:'#F87171', redBg:'#1F0A0A', redHex:'#F87171',
-    shadow:'0 6px 24px rgba(0,0,0,0.4)',
-    shadowSm:'0 2px 8px rgba(0,0,0,0.3)',
-    navBg:'rgba(25,22,41,0.96)',
-  },
+const light = {
+  bg:'#F8FAFC', bg2:'#F1F5F9', card:'#FFFFFF', card2:'#F8FAFC',
+  navBg:'rgba(255,255,255,0.92)', text:'#0F172A', text2:'#334155', muted:'#64748B',
+  border:'#E2E8F0', primary:'#6366F1', primaryDark:'#4338CA', primaryBg:'#EEF2FF',
+  green:'#059669', greenBg:'#ECFDF5', red:'#DC2626', redBg:'#FEF2F2',
+  blue:'#2563EB', accent:'#F59E0B',
 };
+const dark = {
+  bg:'#0A0F1E', bg2:'#111827', card:'#131C2E', card2:'#1E293B',
+  navBg:'rgba(13,20,40,0.94)', text:'#F1F5F9', text2:'#CBD5E1', muted:'#64748B',
+  border:'#1E293B', primary:'#818CF8', primaryDark:'#6366F1', primaryBg:'#1E1B4B',
+  green:'#34D399', greenBg:'#022C22', red:'#F87171', redBg:'#2D0A0A',
+  blue:'#60A5FA', accent:'#FCD34D',
+};
+
+const ThemeContext = createContext();
 
 export function ThemeProvider({ children }) {
   const [isDark, setIsDark] = useState(() => {
     try {
-      const saved = localStorage.getItem('ob_theme');
+      const saved = localStorage.getItem('ob-theme');
       if (saved) return saved === 'dark';
-      return window.matchMedia('(prefers-color-scheme: dark)').matches;
-    } catch { return false; }
+    } catch {}
+    return false;
   });
 
-  const theme = isDark ? themes.dark : themes.light;
+  const theme = isDark ? dark : light;
 
   useEffect(() => {
-    try { localStorage.setItem('ob_theme', isDark ? 'dark' : 'light'); } catch {}
-    document.documentElement.classList.toggle('dark', isDark);
+    try { localStorage.setItem('ob-theme', isDark ? 'dark' : 'light'); } catch {}
     document.body.style.background = theme.bg;
-    document.body.style.color      = theme.text;
-  }, [isDark, theme]);
+    document.body.style.color = theme.text;
+  }, [isDark, theme.bg, theme.text]);
 
   return (
     <ThemeContext.Provider value={{ theme, isDark, toggleTheme: () => setIsDark(d => !d) }}>
