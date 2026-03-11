@@ -119,7 +119,7 @@ export default function Login() {
     border: `1.5px solid ${hasError ? theme.red : theme.border}`,
     borderRadius: 12, padding: '13px 16px',
     color: theme.text, fontSize: 14,
-    fontFamily: "'Plus Jakarta Sans', sans-serif",
+    fontFamily: "'Inter', sans-serif",
     outline: 'none', transition: 'border-color 0.2s',
   });
   const label = { fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' };
@@ -149,12 +149,12 @@ export default function Login() {
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 48 }}>
             <div style={{ width: 48, height: 48, borderRadius: 14, background: 'rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, backdropFilter: 'blur(8px)' }}>🤝</div>
             <div>
-              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif", lineHeight: 1 }}>OnlyBuddy</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', fontFamily: "'Outfit', sans-serif", lineHeight: 1 }}>OnlyBuddy</div>
               <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', letterSpacing: 1 }}>HULL'S ERRAND APP</div>
             </div>
           </div>
 
-          <h2 style={{ fontSize: 42, fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif", lineHeight: 1.15, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 42, fontWeight: 900, color: '#fff', fontFamily: "'Outfit', sans-serif", lineHeight: 1.15, marginBottom: 16 }}>
             Your errands.<br />
             <span style={{ color: 'rgba(255,255,255,0.75)' }}>Handled.</span>
           </h2>
@@ -174,7 +174,7 @@ export default function Login() {
           <div style={{ marginTop: 48, paddingTop: 32, borderTop: '1px solid rgba(255,255,255,0.15)', display: 'flex', gap: 32 }}>
             {[['500+', 'Orders Done'], ['4.9★', 'Avg Rating'], ['30min', 'Avg Delivery']].map(([v, l]) => (
               <div key={l}>
-                <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif" }}>{v}</div>
+                <div style={{ fontSize: 22, fontWeight: 900, color: '#fff', fontFamily: "'Outfit', sans-serif" }}>{v}</div>
                 <div style={{ fontSize: 11, color: 'rgba(255,255,255,0.6)', marginTop: 2 }}>{l}</div>
               </div>
             ))}
@@ -190,14 +190,14 @@ export default function Login() {
           <div style={{ display: 'none', alignItems: 'center', gap: 10, marginBottom: 32, justifyContent: 'center' }} className="mobile-logo">
             <style>{`@media(max-width:820px){.mobile-logo{display:flex!important}}`}</style>
             <div style={{ width: 40, height: 40, borderRadius: 12, background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20 }}>🤝</div>
-            <div style={{ fontSize: 20, fontWeight: 900, color: theme.primary, fontFamily: "'Syne', sans-serif" }}>OnlyBuddy</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: theme.primary, fontFamily: "'Outfit', sans-serif" }}>OnlyBuddy</div>
           </div>
 
           {/* ── Tab switcher (login/signup) */}
           {mode !== 'reset' && (
             <div style={{ display: 'flex', background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 14, padding: 4, marginBottom: 28 }}>
               {[['login', '👋 Sign In'], ['signup', '✨ Create Account']].map(([m, label]) => (
-                <button key={m} className="tab-btn" onClick={() => switchMode(m)} style={{ flex: 1, padding: '11px', borderRadius: 11, border: 'none', background: mode === m ? `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` : 'transparent', color: mode === m ? '#fff' : theme.muted, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", transition: 'all 0.2s' }}>
+                <button key={m} className="tab-btn" onClick={() => switchMode(m)} style={{ flex: 1, padding: '11px', borderRadius: 11, border: 'none', background: mode === m ? `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})` : 'transparent', color: mode === m ? '#fff' : theme.muted, fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: "'Inter', sans-serif", transition: 'all 0.2s' }}>
                   {label}
                 </button>
               ))}
@@ -209,12 +209,12 @@ export default function Login() {
             {/* ── RESET MODE */}
             {mode === 'reset' && (
               <div>
-                <button onClick={() => switchMode('login')} style={{ background: 'none', border: 'none', color: theme.muted, cursor: 'pointer', fontSize: 13, fontWeight: 600, marginBottom: 20, padding: 0, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                <button onClick={() => switchMode('login')} style={{ background: 'none', border: 'none', color: theme.muted, cursor: 'pointer', fontSize: 13, fontWeight: 600, marginBottom: 20, padding: 0, fontFamily: "'Inter', sans-serif" }}>
                   ← Back to Sign In
                 </button>
                 <div style={{ textAlign: 'center', marginBottom: 24 }}>
                   <div style={{ fontSize: 48, marginBottom: 10 }}>🔐</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "'Syne', sans-serif" }}>Forgot Password?</div>
+                  <div style={{ fontSize: 22, fontWeight: 900, fontFamily: "'Outfit', sans-serif" }}>Forgot Password?</div>
                   <div style={{ fontSize: 14, color: theme.muted, marginTop: 6, lineHeight: 1.6 }}>No worries! Enter your email and we'll send you a reset link.</div>
                 </div>
                 <div style={{ marginBottom: 16 }}>
@@ -223,7 +223,7 @@ export default function Login() {
                 </div>
                 {error   && <div style={{ background: theme.redBg, border: `1px solid ${theme.red}33`, borderRadius: 10, padding: '11px 14px', fontSize: 13, color: theme.red, fontWeight: 600, marginBottom: 14 }}>⚠️ {error}</div>}
                 {success && <div style={{ background: theme.greenBg, border: `1px solid ${theme.green}33`, borderRadius: 10, padding: '11px 14px', fontSize: 13, color: theme.green, fontWeight: 600, marginBottom: 14 }}>{success}</div>}
-                <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading ? theme.muted : `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
+                <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none', background: loading ? theme.muted : `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Inter', sans-serif" }}>
                   {loading ? '⏳ Sending...' : '📧 Send Reset Link'}
                 </button>
               </div>
@@ -234,7 +234,7 @@ export default function Login() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
                 <div style={{ textAlign: 'center', marginBottom: 4 }}>
-                  <div style={{ fontSize: 24, fontWeight: 900, fontFamily: "'Syne', sans-serif" }}>
+                  <div style={{ fontSize: 24, fontWeight: 900, fontFamily: "'Outfit', sans-serif" }}>
                     {mode === 'login' ? 'Welcome back 👋' : 'Join OnlyBuddy ✨'}
                   </div>
                   <div style={{ fontSize: 13, color: theme.muted, marginTop: 4 }}>
@@ -247,7 +247,7 @@ export default function Login() {
                   <>
                     <div>
                       <label style={label}>Full Name</label>
-                      <input className="auth-input" style={inp(false)} placeholder="e.g. Charlie Lambert" value={name} onChange={e => setName(e.target.value)} />
+                      <input className="auth-input" style={inp(false)} placeholder="e.g. James Smith" value={name} onChange={e => setName(e.target.value)} />
                     </div>
                     <div>
                       <label style={label}>Phone Number</label>
@@ -339,7 +339,7 @@ export default function Login() {
                 )}
 
                 {/* Submit */}
-                <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '15px', borderRadius: 13, border: 'none', background: loading ? theme.muted : `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: loading ? 'none' : `0 4px 18px ${theme.primary}44`, transition: 'all 0.2s', marginTop: 4 }}>
+                <button onClick={submit} disabled={loading} style={{ width: '100%', padding: '15px', borderRadius: 13, border: 'none', background: loading ? theme.muted : `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: loading ? 'not-allowed' : 'pointer', fontFamily: "'Inter', sans-serif", boxShadow: loading ? 'none' : `0 4px 18px ${theme.primary}44`, transition: 'all 0.2s', marginTop: 4 }}>
                   {loading ? '⏳ Please wait...' : mode === 'login' ? 'Sign In to OnlyBuddy →' : 'Create My Account →'}
                 </button>
 

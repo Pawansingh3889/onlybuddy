@@ -1,67 +1,201 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 
+// ─── Pricing model ───────────────────────────────────────────
+// Grocery Run   : 15% of basket (min £4.99)
+// Buy & Deliver : £6.99 under 2 miles / £9.99 over
+// Queue for Me  : £8.00/hr billed in 30-min slots (min £4.00)
+// Parcel/Return : £6.99 under 2 miles / £9.99 over
+// Prescription  : £6.99 flat anywhere in Hull
+// ─────────────────────────────────────────────────────────────
+
 const ERRAND_TYPES = [
-  { id: 'grocery',  icon: '🛒', label: 'Grocery Run',       color: '#059669', base: 5.00, perMile: 1.00 },
-  { id: 'buy',      icon: '🛍️', label: 'Buy & Deliver',      color: '#7C3AED', base: 6.00, perMile: 1.00 },
-  { id: 'queue',    icon: '⏳', label: 'Queue for Me',        color: '#D97706', base: 10.00, per: '/hr'   },
-  { id: 'parcel',   icon: '📦', label: 'Parcel & Returns',   color: '#2563EB', base: 5.00, perMile: 0.75 },
-  { id: 'pharmacy', icon: '💊', label: 'Prescription Run',   color: '#DB2777', base: 5.00, flat: true    },
+  { id:'grocery',  icon:'🛒', label:'Grocery Run',      color:'#059669', pricing:'15% of basket (min £4.99)',  type:'grocery' },
+  { id:'buy',      icon:'🛍️', label:'Buy & Deliver',    color:'#7C3AED', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
+  { id:'queue',    icon:'⏳', label:'Queue for Me',      color:'#D97706', pricing:'£8.00/hr · min 30 min',      type:'hourly' },
+  { id:'parcel',   icon:'📦', label:'Parcel & Returns', color:'#2563EB', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
+  { id:'pharmacy', icon:'💊', label:'Prescription Run', color:'#DB2777', pricing:'£6.99 flat — all of Hull',   type:'flat', fee:6.99 },
 ];
 
-const PAYMENT_METHODS = [
-  { id: 'stripe', icon: '💳', label: 'Card (Stripe)',  desc: 'Visa, Mastercard, Amex' },
-  { id: 'paypal', icon: '🅿️', label: 'PayPal',         desc: 'Pay with your PayPal balance' },
+const HULL_STORES = [
+  { id:'morrisons',  icon:'🟡', name:"Morrisons" },
+  { id:'tesco',      icon:'🔵', name:'Tesco' },
+  { id:'asda',       icon:'🟢', name:'Asda' },
+  { id:'sainsburys', icon:'🟠', name:"Sainsbury's" },
+  { id:'aldi',       icon:'🔴', name:'Aldi' },
+  { id:'lidl',       icon:'🟤', name:'Lidl' },
+  { id:'coop',       icon:'⚫', name:'Co-op' },
+  { id:'other',      icon:'🏪', name:'Other / Local Shop' },
 ];
 
-// Replace with your actual Stripe publishable key
-const STRIPE_PK = 'pk_test_YOUR_STRIPE_KEY_HERE';
+// Common grocery suggestions for autocomplete
+const GROCERY_SUGGESTIONS = [
+  'Whole milk (2 pints)', 'Semi-skimmed milk (2 pints)', 'Bread (medium sliced)',
+  'Eggs (6 free range)', 'Eggs (12 free range)', 'Butter (250g)',
+  'Cheddar cheese (400g)', 'Chicken breast (500g)', 'Mince beef (500g)',
+  'Pasta (500g)', 'Rice (1kg)', 'Baked beans (4 pack)',
+  'Tinned tomatoes (400g)', 'Orange juice (1L)', 'Bananas (bunch)',
+  'Apples (bag)', 'Potatoes (1.5kg)', 'Carrots (1kg)',
+  'Onions (1kg)', 'Toilet roll (9 pack)', 'Washing up liquid',
+  'Paracetamol (16 tablets)', 'Ibuprofen (16 tablets)',
+];
+
+const calcGroceryFee = (total) => {
+  const fee = total * 0.15;
+  return Math.max(fee, 4.99);
+};
+
+const calcDistanceFee = (miles) => miles <= 2 ? 6.99 : 9.99;
+
+const calcQueueFee = (mins) => {
+  const slots = Math.ceil(Math.max(mins, 30) / 30);
+  return slots * 4.00;
+};
 
 export default function BookingPage() {
-  const { theme } = useTheme();
+  const { theme, isDark } = useTheme();
   const { currentUser } = useAuth();
-  const [step, setStep] = useState(0);
+
+  const [step, setStep] = useState(0); // 0=pick type, 1=details, 2=confirm
   const [errand, setErrand] = useState(null);
-  const [form, setForm] = useState({ description: '', address: '', postcode: '', notes: '', estimatedHours: '1' });
-  const [payment, setPayment] = useState('stripe');
+  const [address, setAddress] = useState('');
+  const [postcode, setPostcode] = useState('');
+  const [notes, setNotes] = useState('');
+  const [payment, setPayment] = useState('card');
   const [submitting, setSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState('');
   const [orderId, setOrderId] = useState('');
 
-  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  // ── Grocery state ──
+  const [store, setStore] = useState('');
+  const [items, setItems] = useState([{ id:1, name:'', qty:1, unit:'item' }]);
+  const [basketEstimate, setBasketEstimate] = useState('');
+  const [itemInput, setItemInput] = useState('');
+  const [suggestions, setSuggestions] = useState([]);
+  const [editingIdx, setEditingIdx] = useState(null);
+  const nextId = useRef(2);
 
-  const estimatedTotal = errand
-    ? errand.id === 'queue'
-      ? errand.base * parseFloat(form.estimatedHours || 1)
-      : errand.base
-    : 0;
+  // ── Queue state ──
+  const [queueMins, setQueueMins] = useState(30);
+  const [queueLocation, setQueueLocation] = useState('');
 
-  const submitOrder = async () => {
-    if (!form.description.trim()) { setError('Please describe your errand'); return; }
-    if (!form.address.trim())     { setError('Please enter your delivery address'); return; }
-    if (!form.postcode.trim())    { setError('Please enter your postcode'); return; }
+  // ── Distance state ──
+  const [distanceMiles, setDistanceMiles] = useState('under2');
+
+  // ── Buy & Deliver state ──
+  const [buyDescription, setBuyDescription] = useState('');
+  const [buyShop, setBuyShop] = useState('');
+  const [buyPrice, setBuyPrice] = useState('');
+
+  // ── Parcel state ──
+  const [parcelCarrier, setParcelCarrier] = useState('');
+  const [parcelType, setParcelType] = useState('return');
+
+  // ── Pharmacy state ──
+  const [pharmacyName, setPharmacyName] = useState('');
+  const [scriptType, setScriptType] = useState('nhs');
+
+  // ─── Fee calculation ───────────────────────────────────
+  const calcFee = () => {
+    if (!errand) return 0;
+    if (errand.type === 'grocery') {
+      const est = parseFloat(basketEstimate) || 0;
+      return est > 0 ? calcGroceryFee(est) : 4.99;
+    }
+    if (errand.type === 'distance') return calcDistanceFee(distanceMiles === 'under2' ? 1 : 3);
+    if (errand.type === 'hourly')   return calcQueueFee(queueMins);
+    if (errand.type === 'flat')     return errand.fee;
+    return 0;
+  };
+
+  // ─── Grocery list helpers ──────────────────────────────
+  const addItem = () => {
+    setItems(prev => [...prev, { id: nextId.current++, name:'', qty:1, unit:'item' }]);
+  };
+  const removeItem = (id) => setItems(prev => prev.filter(i => i.id !== id));
+  const updateItem = (id, key, val) => setItems(prev => prev.map(i => i.id === id ? { ...i, [key]: val } : i));
+
+  const handleItemNameChange = (id, val) => {
+    updateItem(id, 'name', val);
+    setEditingIdx(id);
+    if (val.length > 1) {
+      setSuggestions(GROCERY_SUGGESTIONS.filter(s => s.toLowerCase().includes(val.toLowerCase())).slice(0, 5));
+    } else {
+      setSuggestions([]);
+    }
+  };
+
+  const pickSuggestion = (id, suggestion) => {
+    updateItem(id, 'name', suggestion);
+    setSuggestions([]);
+    setEditingIdx(null);
+  };
+
+  // ─── Validation ────────────────────────────────────────
+  const validateStep1 = () => {
+    if (!address.trim())  { setError('Please enter your delivery address'); return false; }
+    if (!postcode.trim()) { setError('Please enter your postcode'); return false; }
+    if (errand?.type === 'grocery') {
+      if (!store) { setError('Please select a store'); return false; }
+      if (items.filter(i => i.name.trim()).length === 0) { setError('Please add at least one item'); return false; }
+    }
+    if (errand?.type === 'hourly' && !queueLocation.trim()) { setError('Please enter the queue location'); return false; }
+    if (errand?.id === 'buy' && !buyDescription.trim()) { setError('Please describe what you need bought'); return false; }
+    if (errand?.id === 'parcel' && !parcelCarrier.trim()) { setError('Please enter the carrier/drop-off point'); return false; }
     setError('');
-    setSubmitting(true);
+    return true;
+  };
+
+  // ─── Submit ────────────────────────────────────────────
+  const submitOrder = async () => {
+    setSubmitting(true); setError('');
     try {
+      const groceryData = errand?.type === 'grocery' ? {
+        store,
+        items: items.filter(i => i.name.trim()),
+        basketEstimate: parseFloat(basketEstimate) || null,
+      } : {};
+
+      const queueData = errand?.type === 'hourly' ? {
+        queueLocation,
+        estimatedMinutes: queueMins,
+      } : {};
+
+      const buyData = errand?.id === 'buy' ? {
+        buyDescription, buyShop, buyPrice: parseFloat(buyPrice) || null,
+      } : {};
+
+      const parcelData = errand?.id === 'parcel' ? {
+        parcelCarrier, parcelType,
+      } : {};
+
+      const pharmacyData = errand?.id === 'pharmacy' ? {
+        pharmacyName, scriptType,
+      } : {};
+
       const docRef = await addDoc(collection(db, 'orders'), {
         errandType: errand.label,
         errandId: errand.id,
-        description: form.description,
-        address: form.address,
-        postcode: form.postcode.toUpperCase(),
-        notes: form.notes,
-        estimatedHours: form.estimatedHours,
-        total: estimatedTotal,
+        address,
+        postcode: postcode.toUpperCase(),
+        notes,
+        serviceFee: calcFee(),
+        distanceBand: errand.type === 'distance' ? distanceMiles : null,
         paymentMethod: payment,
         status: 'pending',
         customerId: currentUser?.uid || 'guest',
         customerEmail: currentUser?.email || '',
         customerName: currentUser?.displayName || '',
+        ...groceryData,
+        ...queueData,
+        ...buyData,
+        ...parcelData,
+        ...pharmacyData,
         createdAt: serverTimestamp(),
       });
       setOrderId(docRef.id);
@@ -69,171 +203,420 @@ export default function BookingPage() {
     } catch (e) {
       console.error(e);
       setError('Something went wrong. Please try again.');
-    } finally {
-      setSubmitting(false);
-    }
+    } finally { setSubmitting(false); }
   };
 
+  // ─── Styles ────────────────────────────────────────────
+  const inp = { width:'100%', background:theme.card2, border:`1.5px solid ${theme.border}`, borderRadius:12, padding:'12px 15px', color:theme.text, fontSize:14, fontFamily:"'Inter',sans-serif", outline:'none' };
+  const fee = calcFee();
+
+  // ─── Submitted ─────────────────────────────────────────
   if (submitted) return (
-    <div style={{ maxWidth: 560, margin: '60px auto', padding: '0 24px', textAlign: 'center' }}>
-      <div style={{ background: theme.card, border: `1px solid ${theme.border}`, borderRadius: 24, padding: 48 }}>
-        <div style={{ fontSize: 72, marginBottom: 16 }}>🎉</div>
-        <h2 style={{ fontSize: 28, fontWeight: 900, fontFamily: "'Syne', sans-serif", color: theme.green, marginBottom: 12 }}>Order Placed!</h2>
-        <p style={{ fontSize: 15, color: theme.muted, lineHeight: 1.7, marginBottom: 8 }}>
-          Your <strong style={{ color: theme.text }}>{errand?.label}</strong> request has been received. A verified Buddy will be matched shortly.
+    <div style={{ minHeight:'80vh', display:'flex', alignItems:'center', justifyContent:'center', padding:24 }}>
+      <div style={{ maxWidth:520, width:'100%', textAlign:'center' }}>
+        <div style={{ fontSize:72, marginBottom:16 }}>🎉</div>
+        <h1 style={{ fontSize:28, fontWeight:800, fontFamily:"'Outfit',sans-serif", color:theme.text, marginBottom:12 }}>Order Confirmed!</h1>
+        <p style={{ fontSize:15, color:theme.muted, lineHeight:1.8, marginBottom:28 }}>
+          We're matching you with a nearby Buddy. You'll get a text when they accept.
         </p>
-        <div style={{ background: theme.bg2, borderRadius: 12, padding: '12px 20px', fontSize: 13, color: theme.muted, marginBottom: 24 }}>
-          Order ID: <strong style={{ color: theme.text }}>{orderId.substring(0, 8).toUpperCase()}</strong>
+        <div style={{ background:theme.card, border:`1px solid ${theme.border}`, borderRadius:18, padding:'24px 28px', textAlign:'left', marginBottom:24 }}>
+          <div style={{ fontSize:12, color:theme.muted, fontWeight:700, textTransform:'uppercase', letterSpacing:0.5, marginBottom:12 }}>Order Summary</div>
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, marginBottom:8 }}>
+            <span style={{ color:theme.muted }}>Errand</span><span style={{ fontWeight:700, color:theme.text }}>{errand.label}</span>
+          </div>
+          {errand.type === 'grocery' && store && (
+            <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, marginBottom:8 }}>
+              <span style={{ color:theme.muted }}>Store</span><span style={{ fontWeight:600, color:theme.text }}>{HULL_STORES.find(s=>s.id===store)?.name}</span>
+            </div>
+          )}
+          <div style={{ display:'flex', justifyContent:'space-between', fontSize:14, marginBottom:8 }}>
+            <span style={{ color:theme.muted }}>Deliver to</span><span style={{ fontWeight:600, color:theme.text }}>{postcode.toUpperCase()}</span>
+          </div>
+          <div style={{ borderTop:`1px solid ${theme.border}`, marginTop:12, paddingTop:12, display:'flex', justifyContent:'space-between' }}>
+            <span style={{ fontSize:14, color:theme.muted }}>Service Fee</span>
+            <span style={{ fontSize:20, fontWeight:900, color:theme.primary, fontFamily:"'Outfit',sans-serif" }}>£{fee.toFixed(2)}</span>
+          </div>
+          {errand.type === 'grocery' && (
+            <div style={{ fontSize:12, color:theme.muted, marginTop:6 }}>+ basket cost (paid directly to store)</div>
+          )}
         </div>
-        <div style={{ background: theme.primaryBg, border: `1px solid ${theme.primary}33`, borderRadius: 14, padding: '18px 20px', textAlign: 'left', marginBottom: 24 }}>
-          <div style={{ fontSize: 14, fontWeight: 700, color: theme.primary, marginBottom: 10 }}>What happens next:</div>
-          {['⏱ A Buddy is being matched to your order', '📱 You\'ll receive a confirmation when matched', '📍 Track your Buddy live in the app', '💳 Payment taken only after delivery'].map(s => (
-            <div key={s} style={{ fontSize: 13, color: theme.text2, marginBottom: 6 }}>{s}</div>
-          ))}
-        </div>
-        <button onClick={() => { setStep(0); setErrand(null); setForm({ description: '', address: '', postcode: '', notes: '', estimatedHours: '1' }); setSubmitted(false); setOrderId(''); }} style={{ background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', border: 'none', borderRadius: 12, padding: '13px 28px', fontSize: 14, fontWeight: 700, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-          Book Another Errand
-        </button>
+        <div style={{ fontSize:13, color:theme.muted, marginBottom:24 }}>Order ID: <span style={{ fontFamily:'monospace', color:theme.text2 }}>{orderId.slice(0,8).toUpperCase()}</span></div>
+        <Link to="/" style={{ textDecoration:'none', display:'inline-block', background:`linear-gradient(135deg, #6366F1, #4338CA)`, color:'#fff', padding:'13px 32px', borderRadius:14, fontSize:15, fontWeight:700, fontFamily:"'Outfit',sans-serif" }}>Back to Home</Link>
       </div>
     </div>
   );
 
-  const inputStyle = { width: '100%', background: theme.card2, border: `1.5px solid ${theme.border}`, borderRadius: 10, padding: '11px 14px', color: theme.text, fontSize: 14, fontFamily: "'Plus Jakarta Sans', sans-serif", outline: 'none', resize: 'vertical' };
+  const UNIT_OPTIONS = ['item','pack','kg','g','L','ml','loaf','bunch','box','bottle','tin','bag','jar','roll'];
 
-  return (
-    <div style={{ background: theme.bg, minHeight: '100vh' }}>
-      <div style={{ background: `linear-gradient(135deg, ${theme.primaryDark}, ${theme.primary})`, padding: '40px 24px', textAlign: 'center' }}>
-        <h1 style={{ fontSize: 'clamp(24px, 4vw, 40px)', fontWeight: 900, color: '#fff', fontFamily: "'Syne', sans-serif", marginBottom: 8 }}>Book a Buddy</h1>
-        <p style={{ fontSize: 15, color: 'rgba(255,255,255,0.85)' }}>Describe your errand — we'll match you with a verified local Buddy</p>
+  // ─── Grocery list UI ───────────────────────────────────
+  const GroceryList = () => (
+    <div>
+      {/* Store picker */}
+      <div style={{ marginBottom:20 }}>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:8, textTransform:'uppercase' }}>Which Store? *</label>
+        <div style={{ display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:8 }}>
+          {HULL_STORES.map(s => (
+            <button key={s.id} onClick={()=>setStore(s.id)} style={{ padding:'10px 6px', borderRadius:12, border:`1.5px solid ${store===s.id ? '#059669' : theme.border}`, background:store===s.id ? '#05966918' : theme.card2, color:store===s.id ? '#059669' : theme.muted, fontSize:12, fontWeight:700, cursor:'pointer', textAlign:'center', transition:'all 0.15s', fontFamily:"'Inter',sans-serif" }}>
+              <div style={{ fontSize:18, marginBottom:3 }}>{s.icon}</div>
+              {s.name.split(' ')[0]}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {!currentUser && (
-        <div style={{ background: theme.accent + '22', border: `1px solid ${theme.accent}44`, padding: '12px 24px', textAlign: 'center', fontSize: 14, color: theme.text2 }}>
-          💡 <Link to="/login" style={{ color: theme.primary, fontWeight: 700 }}>Sign in</Link> to track your orders and save your address. Or continue as a guest.
+      {/* Item list */}
+      <div style={{ marginBottom:12 }}>
+        <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:8 }}>
+          <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, textTransform:'uppercase' }}>Shopping List * ({items.filter(i=>i.name.trim()).length} items)</label>
+          <button onClick={addItem} style={{ fontSize:12, color:theme.primary, fontWeight:700, background:'none', border:'none', cursor:'pointer', padding:'4px 8px', fontFamily:"'Inter',sans-serif" }}>+ Add Item</button>
         </div>
-      )}
 
-      <div style={{ maxWidth: 680, margin: '0 auto', padding: '40px 24px 80px' }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          {items.map((item, idx) => (
+            <div key={item.id} style={{ position:'relative' }}>
+              <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                {/* Quantity */}
+                <div style={{ display:'flex', alignItems:'center', gap:4, flexShrink:0 }}>
+                  <button onClick={()=>updateItem(item.id,'qty',Math.max(1,item.qty-1))} style={{ width:28, height:28, borderRadius:8, border:`1px solid ${theme.border}`, background:theme.card2, color:theme.text, fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>−</button>
+                  <span style={{ minWidth:24, textAlign:'center', fontSize:14, fontWeight:700, color:theme.text }}>{item.qty}</span>
+                  <button onClick={()=>updateItem(item.id,'qty',item.qty+1)} style={{ width:28, height:28, borderRadius:8, border:`1px solid ${theme.border}`, background:theme.card2, color:theme.text, fontSize:16, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', fontWeight:700 }}>+</button>
+                </div>
+                {/* Unit */}
+                <select value={item.unit} onChange={e=>updateItem(item.id,'unit',e.target.value)} style={{ ...inp, width:70, padding:'10px 6px', flexShrink:0, fontSize:12 }}>
+                  {UNIT_OPTIONS.map(u=><option key={u}>{u}</option>)}
+                </select>
+                {/* Name */}
+                <div style={{ flex:1, position:'relative' }}>
+                  <input
+                    className="booking-inp"
+                    style={{ ...inp }}
+                    placeholder="e.g. Semi-skimmed milk"
+                    value={item.name}
+                    onChange={e=>handleItemNameChange(item.id, e.target.value)}
+                    onFocus={()=>setEditingIdx(item.id)}
+                    onBlur={()=>setTimeout(()=>setSuggestions([]),150)}
+                  />
+                  {/* Autocomplete dropdown */}
+                  {editingIdx === item.id && suggestions.length > 0 && (
+                    <div style={{ position:'absolute', top:'100%', left:0, right:0, background:theme.card, border:`1px solid ${theme.primary}44`, borderRadius:10, zIndex:50, overflow:'hidden', boxShadow:'0 4px 20px rgba(0,0,0,0.15)', marginTop:3 }}>
+                      {suggestions.map(s=>(
+                        <div key={s} onMouseDown={()=>pickSuggestion(item.id, s)} style={{ padding:'10px 14px', fontSize:13, color:theme.text2, cursor:'pointer', borderBottom:`1px solid ${theme.border}` }}
+                          onMouseEnter={e=>e.currentTarget.style.background=theme.bg2}
+                          onMouseLeave={e=>e.currentTarget.style.background='transparent'}
+                        >{s}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                {/* Remove */}
+                {items.length > 1 && (
+                  <button onClick={()=>removeItem(item.id)} style={{ width:28, height:28, borderRadius:8, border:`1px solid ${theme.border}`, background:theme.redBg||'#FEE2E2', color:'#EF4444', fontSize:14, cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>×</button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
 
-        {/* Step 0: Choose errand */}
+        <button onClick={addItem} style={{ marginTop:10, width:'100%', padding:'10px', borderRadius:12, border:`1.5px dashed ${theme.border}`, background:'none', color:theme.primary, fontSize:14, fontWeight:600, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+          + Add Another Item
+        </button>
+      </div>
+
+      {/* Basket estimate */}
+      <div style={{ marginTop:16 }}>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Estimated Basket Total (£) — optional but helps us match faster</label>
+        <div style={{ position:'relative' }}>
+          <span style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:theme.muted, fontSize:15 }}>£</span>
+          <input className="booking-inp" style={{ ...inp, paddingLeft:28 }} type="number" min="0" step="0.01" placeholder="e.g. 35.00" value={basketEstimate} onChange={e=>setBasketEstimate(e.target.value)} />
+        </div>
+        {basketEstimate && parseFloat(basketEstimate) > 0 && (
+          <div style={{ marginTop:8, background:theme.card2, border:`1px solid #05966933`, borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+            <span style={{ fontSize:13, color:theme.muted }}>Your service fee</span>
+            <span style={{ fontSize:16, fontWeight:800, color:'#059669', fontFamily:"'Outfit',sans-serif" }}>£{calcGroceryFee(parseFloat(basketEstimate)).toFixed(2)}</span>
+          </div>
+        )}
+        <div style={{ fontSize:12, color:theme.muted, marginTop:6, lineHeight:1.6 }}>
+          15% of basket total (min £4.99). You pay the store separately — your Buddy uses your payment details at checkout or you can hand cash.
+        </div>
+      </div>
+    </div>
+  );
+
+  // ─── Queue UI ─────────────────────────────────────────
+  const QueueForm = () => (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Where Is the Queue? *</label>
+        <input className="booking-inp" style={inp} placeholder="e.g. Hull Post Office, Jameson Street" value={queueLocation} onChange={e=>setQueueLocation(e.target.value)} />
+      </div>
+      <div>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:10, textTransform:'uppercase' }}>Estimated Queue Time</label>
+        <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+          {[30,45,60,90,120].map(m=>(
+            <button key={m} onClick={()=>setQueueMins(m)} style={{ flex:1, minWidth:60, padding:'11px 8px', borderRadius:12, border:`1.5px solid ${queueMins===m?'#D97706':theme.border}`, background:queueMins===m?'#D9770618':theme.card2, color:queueMins===m?'#D97706':theme.muted, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+              {m < 60 ? `${m} min` : `${m/60} hr`}
+            </button>
+          ))}
+        </div>
+        <div style={{ marginTop:10, background:theme.card2, border:`1px solid #D9770633`, borderRadius:10, padding:'10px 14px', display:'flex', justifyContent:'space-between' }}>
+          <span style={{ fontSize:13, color:theme.muted }}>Estimated fee</span>
+          <span style={{ fontSize:16, fontWeight:800, color:'#D97706', fontFamily:"'Outfit',sans-serif" }}>£{calcQueueFee(queueMins).toFixed(2)}</span>
+        </div>
+        <div style={{ fontSize:12, color:theme.muted, marginTop:6 }}>£4.00 per 30 minutes. Only charged for actual queue time.</div>
+      </div>
+    </div>
+  );
+
+  // ─── Distance picker ──────────────────────────────────
+  const DistancePicker = () => (
+    <div style={{ marginBottom:16 }}>
+      <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:8, textTransform:'uppercase' }}>Distance from Buddy</label>
+      <div style={{ display:'flex', gap:10 }}>
+        {[['under2','Under 2 miles','£6.99'],['over2','Over 2 miles','£9.99']].map(([val,label,price])=>(
+          <button key={val} onClick={()=>setDistanceMiles(val)} style={{ flex:1, padding:'14px 10px', borderRadius:14, border:`1.5px solid ${distanceMiles===val?theme.primary:theme.border}`, background:distanceMiles===val?theme.primaryBg:theme.card2, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s' }}>
+            <div style={{ fontSize:18, fontWeight:900, color:distanceMiles===val?theme.primary:theme.text, fontFamily:"'Outfit',sans-serif" }}>{price}</div>
+            <div style={{ fontSize:12, color:theme.muted, marginTop:3 }}>{label}</div>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ─── Buy & Deliver form ───────────────────────────────
+  const BuyForm = () => (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <DistancePicker />
+      <div>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>What Do You Need? *</label>
+        <textarea className="booking-inp" style={{ ...inp, minHeight:80, resize:'vertical' }} placeholder="e.g. Size 9 Nike Air Force 1 in white from JD Sports on Whitefriargate" value={buyDescription} onChange={e=>setBuyDescription(e.target.value)} />
+      </div>
+      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+        <div>
+          <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Shop Name</label>
+          <input className="booking-inp" style={inp} placeholder="e.g. JD Sports" value={buyShop} onChange={e=>setBuyShop(e.target.value)} />
+        </div>
+        <div>
+          <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Item Price (£)</label>
+          <div style={{ position:'relative' }}>
+            <span style={{ position:'absolute', left:14, top:'50%', transform:'translateY(-50%)', color:theme.muted }}>£</span>
+            <input className="booking-inp" style={{ ...inp, paddingLeft:28 }} type="number" placeholder="0.00" value={buyPrice} onChange={e=>setBuyPrice(e.target.value)} />
+          </div>
+        </div>
+      </div>
+      <div style={{ background:theme.card2, border:`1px solid ${theme.primary}33`, borderRadius:10, padding:'10px 14px', fontSize:13, color:theme.muted, lineHeight:1.6 }}>
+        💡 Your Buddy will purchase the item and you repay the exact price + the service fee above. Buddy always sends you a receipt photo.
+      </div>
+    </div>
+  );
+
+  // ─── Parcel form ──────────────────────────────────────
+  const ParcelForm = () => (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <DistancePicker />
+      <div style={{ display:'flex', gap:10 }}>
+        {[['return','📦 Return'],['collect','🏃 Collect'],['dropoff','📮 Drop-off']].map(([val,label])=>(
+          <button key={val} onClick={()=>setParcelType(val)} style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1.5px solid ${parcelType===val?theme.primary:theme.border}`, background:parcelType===val?theme.primaryBg:theme.card2, color:parcelType===val?theme.primary:theme.muted, fontSize:13, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Carrier / Drop-off Point *</label>
+        <input className="booking-inp" style={inp} placeholder="e.g. Evri, Royal Mail, Argos, Post Office" value={parcelCarrier} onChange={e=>setParcelCarrier(e.target.value)} />
+      </div>
+    </div>
+  );
+
+  // ─── Pharmacy form ────────────────────────────────────
+  const PharmacyForm = () => (
+    <div style={{ display:'flex', flexDirection:'column', gap:16 }}>
+      <div style={{ display:'flex', gap:10 }}>
+        {[['nhs','NHS Prescription'],['private','Private'],['otc','Over the Counter']].map(([val,label])=>(
+          <button key={val} onClick={()=>setScriptType(val)} style={{ flex:1, padding:'11px 8px', borderRadius:12, border:`1.5px solid ${scriptType===val?'#DB2777':theme.border}`, background:scriptType===val?'#DB277718':theme.card2, color:scriptType===val?'#DB2777':theme.muted, fontSize:12, fontWeight:700, cursor:'pointer', fontFamily:"'Inter',sans-serif" }}>
+            {label}
+          </button>
+        ))}
+      </div>
+      <div>
+        <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Pharmacy Name (optional)</label>
+        <input className="booking-inp" style={inp} placeholder="e.g. Boots Princes Quay, Lloyds Beverley Road" value={pharmacyName} onChange={e=>setPharmacyName(e.target.value)} />
+      </div>
+      <div style={{ background:'#DB277710', border:'1px solid #DB277733', borderRadius:10, padding:'10px 14px', fontSize:13, color:theme.muted, lineHeight:1.6 }}>
+        🔒 Your Buddy will verify ID at the pharmacy if required by the pharmacist. NHS prescriptions are collected with your HC2/HC3 certificate if applicable.
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{ background:theme.bg, minHeight:'100vh', overflowX:'hidden' }}>
+      <style>{`
+        *, *::before, *::after { box-sizing: border-box; }
+        .booking-inp:focus { border-color: ${theme.primary} !important; box-shadow: 0 0 0 3px ${theme.primary}22; outline: none; }
+      `}</style>
+
+      <div style={{ maxWidth:680, margin:'0 auto', padding:'clamp(28px,5vw,52px) 20px' }}>
+
+        {/* Header */}
+        <div style={{ marginBottom:28 }}>
+          <h1 style={{ fontSize:'clamp(24px,5vw,36px)', fontWeight:800, fontFamily:"'Outfit',sans-serif", color:theme.text, marginBottom:8 }}>Book a Buddy</h1>
+          <p style={{ fontSize:14, color:theme.muted }}>Matched with a local Hull Buddy in minutes. Pay only when done.</p>
+        </div>
+
+        {/* Step indicator */}
+        <div style={{ display:'flex', gap:8, marginBottom:32, alignItems:'center' }}>
+          {['Pick Errand','Details','Confirm'].map((label,i)=>(
+            <div key={label} style={{ display:'flex', alignItems:'center', gap:8, flex:i<2?1:0 }}>
+              <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                <div style={{ width:28, height:28, borderRadius:'50%', background:step>=i?theme.primary:theme.card2, border:`2px solid ${step>=i?theme.primary:theme.border}`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:12, fontWeight:800, color:step>=i?'#fff':theme.muted, flexShrink:0 }}>{step>i?'✓':i+1}</div>
+                <span style={{ fontSize:13, fontWeight:step===i?700:500, color:step===i?theme.text:theme.muted, whiteSpace:'nowrap' }}>{label}</span>
+              </div>
+              {i<2&&<div style={{ flex:1, height:2, background:step>i?theme.primary:theme.border, borderRadius:1 }} />}
+            </div>
+          ))}
+        </div>
+
+        {/* ── STEP 0: Pick errand type ── */}
         {step === 0 && (
           <div>
-            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 16, fontFamily: "'Syne', sans-serif" }}>What do you need?</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-              {ERRAND_TYPES.map(e => (
-                <div key={e.id} onClick={() => { setErrand(e); setStep(1); }} style={{ background: theme.card, border: `2px solid ${errand?.id === e.id ? e.color : theme.border}`, borderRadius: 16, padding: 22, cursor: 'pointer', transition: 'all 0.18s', borderTop: `4px solid ${e.color}` }}>
-                  <div style={{ fontSize: 36, marginBottom: 10 }}>{e.icon}</div>
-                  <div style={{ fontSize: 14, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>{e.label}</div>
-                  <div style={{ fontSize: 13, color: theme.primary, fontWeight: 700, marginTop: 6 }}>from £{e.base.toFixed(2)}</div>
-                  {e.flat && <div style={{ fontSize: 11, color: theme.green, marginTop: 2 }}>Flat rate</div>}
-                </div>
+            <div style={{ fontSize:12, fontWeight:700, color:theme.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:14 }}>What do you need?</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
+              {ERRAND_TYPES.map(e=>(
+                <button key={e.id} onClick={()=>{setErrand(e);setStep(1);setError('');}} style={{ display:'flex', alignItems:'center', gap:16, padding:'16px 20px', background:theme.card, border:`1.5px solid ${errand?.id===e.id?e.color:theme.border}`, borderRadius:16, cursor:'pointer', textAlign:'left', transition:'all 0.15s', fontFamily:"'Inter',sans-serif", borderLeft:`4px solid ${e.color}` }}>
+                  <span style={{ fontSize:30, flexShrink:0 }}>{e.icon}</span>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:16, fontWeight:700, color:theme.text, fontFamily:"'Outfit',sans-serif" }}>{e.label}</div>
+                    <div style={{ fontSize:12, color:theme.muted, marginTop:2 }}>{e.pricing}</div>
+                  </div>
+                  <div style={{ fontSize:18, color:theme.muted }}>→</div>
+                </button>
               ))}
             </div>
-          </div>
-        )}
-
-        {/* Step 1: Describe + address */}
-        {step === 1 && errand && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <button onClick={() => setStep(0)} style={{ background: theme.bg2, border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', color: theme.text2, fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>← Back</button>
-              <div style={{ fontSize: 22, fontWeight: 900, color: errand.color }}>{errand.icon} {errand.label}</div>
-            </div>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Describe Your Errand *</label>
-              <textarea style={{ ...inputStyle, minHeight: 100 }} rows={4} placeholder={errand.id === 'grocery' ? 'e.g. Semi-skimmed milk x2, bread, bananas, tin of beans from Tesco Express...' : errand.id === 'pharmacy' ? 'e.g. Collect prescription for John Smith from Boots on Prospect Street. Prescription should be ready.' : errand.id === 'queue' ? 'e.g. Hold my place in the Post Office queue on Jameson Street from 10am...' : 'Describe what you need done...'} value={form.description} onChange={e => set('description', e.target.value)} />
-            </div>
-
-            {errand.id === 'queue' && (
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Estimated Hours</label>
-                <div style={{ display: 'flex', gap: 8 }}>
-                  {['0.5', '1', '1.5', '2', '3'].map(h => (
-                    <button key={h} onClick={() => set('estimatedHours', h)} style={{ padding: '10px 16px', borderRadius: 10, border: `1.5px solid ${form.estimatedHours === h ? errand.color : theme.border}`, background: form.estimatedHours === h ? errand.color + '22' : theme.card2, color: form.estimatedHours === h ? errand.color : theme.muted, fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>{h}hr</button>
-                  ))}
-                </div>
+            {!currentUser && (
+              <div style={{ background:theme.primaryBg, border:`1px solid ${theme.primary}33`, borderRadius:12, padding:'12px 16px', fontSize:13, color:theme.muted }}>
+                💡 <Link to="/login" style={{ color:theme.primary, fontWeight:700 }}>Sign in</Link> to track orders, get Buddy updates, and re-order in one tap.
               </div>
             )}
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Your Delivery Address *</label>
-              <input style={inputStyle} placeholder="e.g. 14 Newland Avenue" value={form.address} onChange={e => set('address', e.target.value)} />
-            </div>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Postcode *</label>
-              <input style={inputStyle} placeholder="e.g. HU5 2RQ" value={form.postcode} onChange={e => set('postcode', e.target.value.toUpperCase())} />
-            </div>
-
-            <div>
-              <label style={{ fontSize: 12, fontWeight: 700, color: theme.muted, letterSpacing: 0.5, display: 'block', marginBottom: 6, textTransform: 'uppercase' }}>Additional Notes (optional)</label>
-              <textarea style={{ ...inputStyle, minHeight: 70 }} rows={2} placeholder="e.g. Leave at the door, ring bell twice, access code 1234..." value={form.notes} onChange={e => set('notes', e.target.value)} />
-            </div>
-
-            <button onClick={() => {
-              if (!form.description.trim()) { setError('Please describe your errand'); return; }
-              if (!form.address.trim())     { setError('Please enter your delivery address'); return; }
-              if (!form.postcode.trim())    { setError('Please enter your postcode'); return; }
-              setError(''); setStep(2);
-            }} style={{ padding: '14px', borderRadius: 12, border: 'none', background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontSize: 15, fontWeight: 800, cursor: 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif" }}>
-              Continue to Payment →
-            </button>
-            {error && <div style={{ background: theme.redBg, border: `1px solid ${theme.red}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: theme.red }}>{error}</div>}
           </div>
         )}
 
-        {/* Step 2: Payment */}
-        {step === 2 && errand && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
-              <button onClick={() => setStep(1)} style={{ background: theme.bg2, border: 'none', borderRadius: 8, padding: '6px 12px', cursor: 'pointer', color: theme.text2, fontSize: 13, fontFamily: "'Plus Jakarta Sans', sans-serif" }}>← Back</button>
-              <div style={{ fontSize: 20, fontWeight: 800, fontFamily: "'Syne', sans-serif" }}>Review & Pay</div>
+        {/* ── STEP 1: Details ── */}
+        {step === 1 && errand && (
+          <div>
+            <button onClick={()=>{setStep(0);setError('');}} style={{ background:'none', border:'none', color:theme.muted, fontSize:13, cursor:'pointer', marginBottom:20, display:'flex', alignItems:'center', gap:6, fontFamily:"'Inter',sans-serif" }}>
+              ← Back
+            </button>
+
+            <div style={{ display:'flex', alignItems:'center', gap:10, marginBottom:24, padding:'14px 18px', background:theme.card, border:`1.5px solid ${errand.color}33`, borderRadius:14, borderLeft:`4px solid ${errand.color}` }}>
+              <span style={{ fontSize:26 }}>{errand.icon}</span>
+              <div>
+                <div style={{ fontSize:15, fontWeight:700, color:theme.text, fontFamily:"'Outfit',sans-serif" }}>{errand.label}</div>
+                <div style={{ fontSize:12, color:theme.muted }}>{errand.pricing}</div>
+              </div>
             </div>
 
-            {/* Order summary */}
-            <div style={{ background: theme.bg2, borderRadius: 16, padding: 20 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12 }}>Order Summary</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
+              {/* Errand-specific form */}
+              {errand.type === 'grocery' && <GroceryList />}
+              {errand.type === 'hourly'  && <QueueForm />}
+              {errand.id   === 'buy'     && <BuyForm />}
+              {errand.id   === 'parcel'  && <ParcelForm />}
+              {errand.id   === 'pharmacy'&& <PharmacyForm />}
+
+              {/* Delivery address */}
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>
+                  {errand.type === 'grocery' ? 'Deliver To *' : errand.type === 'hourly' ? 'Your Address (for drop-off) *' : 'Delivery / Collection Address *'}
+                </label>
+                <input className="booking-inp" style={{ ...inp, marginBottom:10 }} placeholder="House number and street" value={address} onChange={e=>setAddress(e.target.value)} />
+                <input className="booking-inp" style={inp} placeholder="Postcode e.g. HU5 2RQ" value={postcode} onChange={e=>setPostcode(e.target.value.toUpperCase())} />
+              </div>
+
+              {/* Notes */}
+              <div>
+                <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:6, textTransform:'uppercase' }}>Any Extra Notes? (optional)</label>
+                <textarea className="booking-inp" style={{ ...inp, minHeight:70, resize:'vertical' }} placeholder="e.g. Leave at door if no answer. Buzzer code 1234." value={notes} onChange={e=>setNotes(e.target.value)} />
+              </div>
+
+              {error && <div style={{ background:theme.redBg||'#FEE2E2', border:'1px solid #EF444433', borderRadius:10, padding:'11px 14px', fontSize:13, color:'#EF4444', fontWeight:600 }}>⚠️ {error}</div>}
+
+              <button onClick={()=>{ if(validateStep1()) setStep(2); }} style={{ width:'100%', padding:16, borderRadius:14, border:'none', background:`linear-gradient(135deg, #6366F1, #4338CA)`, color:'#fff', fontSize:16, fontWeight:800, cursor:'pointer', fontFamily:"'Outfit',sans-serif", boxShadow:'0 6px 24px rgba(99,102,241,0.35)' }}>
+                Review Order →
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* ── STEP 2: Confirm ── */}
+        {step === 2 && errand && (
+          <div>
+            <button onClick={()=>{setStep(1);setError('');}} style={{ background:'none', border:'none', color:theme.muted, fontSize:13, cursor:'pointer', marginBottom:20, display:'flex', alignItems:'center', gap:6, fontFamily:"'Inter',sans-serif" }}>
+              ← Back
+            </button>
+
+            <div style={{ background:theme.card, border:`1px solid ${theme.border}`, borderRadius:18, padding:'24px', marginBottom:20 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:theme.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:16 }}>Order Summary</div>
+
               {[
                 ['Errand', `${errand.icon} ${errand.label}`],
-                ['Address', `${form.address}, ${form.postcode}`],
-                ['Description', form.description.substring(0, 80) + (form.description.length > 80 ? '...' : '')],
-              ].map(([k, v]) => (
-                <div key={k} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '6px 0', borderBottom: `1px solid ${theme.border}` }}>
-                  <span style={{ color: theme.muted }}>{k}</span>
-                  <span style={{ color: theme.text, maxWidth: 300, textAlign: 'right' }}>{v}</span>
+                ...(errand.type==='grocery'&&store ? [['Store', HULL_STORES.find(s=>s.id===store)?.name]] : []),
+                ...(errand.type==='grocery' ? [['Items', `${items.filter(i=>i.name.trim()).length} item${items.filter(i=>i.name.trim()).length!==1?'s':''}`]] : []),
+                ...(errand.type==='hourly' ? [['Queue at', queueLocation],['Est. time', `${queueMins} min`]] : []),
+                ['Deliver to', `${address}, ${postcode}`],
+                ...(notes ? [['Notes', notes]] : []),
+              ].map(([k,v])=>(
+                <div key={k} style={{ display:'flex', justifyContent:'space-between', gap:12, paddingBottom:10, marginBottom:10, borderBottom:`1px solid ${theme.border}`, fontSize:14 }}>
+                  <span style={{ color:theme.muted, flexShrink:0 }}>{k}</span>
+                  <span style={{ fontWeight:600, color:theme.text, textAlign:'right' }}>{v}</span>
                 </div>
               ))}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '12px 0 0', marginTop: 4 }}>
-                <span style={{ fontSize: 16, fontWeight: 800 }}>Estimated Total</span>
-                <span style={{ fontSize: 22, fontWeight: 900, color: theme.primary }}>£{estimatedTotal.toFixed(2)}</span>
+
+              {/* Grocery item list preview */}
+              {errand.type==='grocery' && items.filter(i=>i.name.trim()).length > 0 && (
+                <div style={{ background:theme.bg2, borderRadius:10, padding:'12px 14px', marginBottom:16 }}>
+                  <div style={{ fontSize:12, fontWeight:700, color:theme.muted, marginBottom:8, textTransform:'uppercase', letterSpacing:0.5 }}>Shopping List</div>
+                  {items.filter(i=>i.name.trim()).map(i=>(
+                    <div key={i.id} style={{ fontSize:13, color:theme.text2, marginBottom:5, display:'flex', gap:8 }}>
+                      <span style={{ color:theme.primary, fontWeight:700 }}>{i.qty}× {i.unit}</span>
+                      <span>{i.name}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div style={{ background:theme.bg2, borderRadius:12, padding:'14px 16px' }}>
+                <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:4 }}>
+                  <span style={{ fontSize:14, fontWeight:700, color:theme.text }}>Service Fee</span>
+                  <span style={{ fontSize:26, fontWeight:900, color:theme.primary, fontFamily:"'Outfit',sans-serif" }}>£{fee.toFixed(2)}</span>
+                </div>
+                {errand.type==='grocery' && (
+                  <div style={{ fontSize:12, color:theme.muted, lineHeight:1.6 }}>+ basket cost paid directly to store · 15% of basket (min £4.99)</div>
+                )}
+                <div style={{ fontSize:12, color:theme.green||'#059669', marginTop:6, fontWeight:600 }}>✓ Only charged after your errand is complete</div>
               </div>
-              <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>💳 Payment only taken after errand is completed</div>
             </div>
 
             {/* Payment method */}
-            <div>
-              <div style={{ fontSize: 13, fontWeight: 700, color: theme.muted, marginBottom: 10, textTransform: 'uppercase', letterSpacing: 0.5 }}>Payment Method</div>
-              <div style={{ display: 'flex', gap: 10 }}>
-                {PAYMENT_METHODS.map(p => (
-                  <div key={p.id} onClick={() => setPayment(p.id)} style={{ flex: 1, background: theme.card, border: `2px solid ${payment === p.id ? theme.primary : theme.border}`, borderRadius: 12, padding: '14px 16px', cursor: 'pointer', transition: 'all 0.18s', background: payment === p.id ? theme.primaryBg : theme.card }}>
-                    <div style={{ fontSize: 24, marginBottom: 6 }}>{p.icon}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700, color: payment === p.id ? theme.primary : theme.text }}>{p.label}</div>
-                    <div style={{ fontSize: 11, color: theme.muted }}>{p.desc}</div>
-                  </div>
+            <div style={{ marginBottom:20 }}>
+              <div style={{ fontSize:12, fontWeight:700, color:theme.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:10 }}>Payment Method</div>
+              <div style={{ display:'flex', gap:10 }}>
+                {[['card','💳','Pay by Card','Visa, Mastercard, Amex'],['paypal','🅿️','PayPal','Pay with PayPal']].map(([val,icon,label,sub])=>(
+                  <button key={val} onClick={()=>setPayment(val)} style={{ flex:1, padding:'14px 12px', borderRadius:14, border:`1.5px solid ${payment===val?theme.primary:theme.border}`, background:payment===val?theme.primaryBg:theme.card, cursor:'pointer', textAlign:'center', fontFamily:"'Inter',sans-serif", transition:'all 0.15s' }}>
+                    <div style={{ fontSize:22 }}>{icon}</div>
+                    <div style={{ fontSize:13, fontWeight:700, color:payment===val?theme.primary:theme.text, marginTop:4 }}>{label}</div>
+                    <div style={{ fontSize:11, color:theme.muted }}>{sub}</div>
+                  </button>
                 ))}
               </div>
             </div>
 
-            <div style={{ background: theme.primaryBg, border: `1px solid ${theme.primary}33`, borderRadius: 12, padding: '12px 16px', fontSize: 13, color: theme.text2 }}>
-              🔒 Secure payment via {payment === 'stripe' ? 'Stripe' : 'PayPal'}. Your card details are never stored on our servers.
-            </div>
+            {error && <div style={{ background:theme.redBg||'#FEE2E2', border:'1px solid #EF444433', borderRadius:10, padding:'11px 14px', fontSize:13, color:'#EF4444', fontWeight:600, marginBottom:16 }}>⚠️ {error}</div>}
 
-            {error && <div style={{ background: theme.redBg, border: `1px solid ${theme.red}44`, borderRadius: 10, padding: '10px 14px', fontSize: 13, color: theme.red }}>{error}</div>}
-
-            <button onClick={submitOrder} disabled={submitting} style={{ padding: '16px', borderRadius: 12, border: 'none', background: submitting ? theme.muted : `linear-gradient(135deg, ${theme.green}, #047857)`, color: '#fff', fontSize: 16, fontWeight: 800, cursor: submitting ? 'not-allowed' : 'pointer', fontFamily: "'Plus Jakarta Sans', sans-serif", boxShadow: submitting ? 'none' : `0 4px 20px ${theme.green}44` }}>
-              {submitting ? '⏳ Placing Order...' : `🚀 Confirm & Place Order — £${estimatedTotal.toFixed(2)}`}
+            <button onClick={submitOrder} disabled={submitting} style={{ width:'100%', padding:17, borderRadius:14, border:'none', background:submitting?theme.muted:`linear-gradient(135deg, #6366F1, #4338CA)`, color:'#fff', fontSize:17, fontWeight:800, cursor:submitting?'not-allowed':'pointer', fontFamily:"'Outfit',sans-serif", boxShadow:submitting?'none':'0 6px 24px rgba(99,102,241,0.35)', transition:'all 0.2s' }}>
+              {submitting ? '⏳ Placing Order...' : `Confirm & Book — £${fee.toFixed(2)} →`}
             </button>
+            <div style={{ textAlign:'center', fontSize:12, color:theme.muted, marginTop:12 }}>
+              You will only be charged once your errand is completed
+            </div>
           </div>
         )}
       </div>
