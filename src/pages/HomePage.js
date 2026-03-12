@@ -30,16 +30,16 @@ const TRUST_BADGES = [
 
 export default function HomePage() {
   const { theme, isDark } = useTheme();
-  const [buddyCount, setBuddyCount] = useState(0);
-  const [orderCount, setOrderCount] = useState(0);
+  const [buddyCount, setBuddyCount] = useState(null);
+  const [orderCount, setOrderCount] = useState(null);
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'buddy'), where('status', '==', 'approved'));
-    getCountFromServer(q).then(snap => setBuddyCount(snap.data().count)).catch(() => {});
+    getCountFromServer(q).then(snap => setBuddyCount(snap.data().count)).catch(() => setBuddyCount(0));
   }, []);
 
   useEffect(() => {
-    getCountFromServer(collection(db, 'orders')).then(snap => setOrderCount(snap.data().count)).catch(() => {});
+    getCountFromServer(collection(db, 'orders')).then(snap => setOrderCount(snap.data().count)).catch(() => setOrderCount(0));
   }, []);
 
   // ── Gradients that ACTUALLY change between light/dark

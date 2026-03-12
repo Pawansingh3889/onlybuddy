@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { db, storage } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
@@ -27,10 +27,16 @@ const empty = {
   agreeTerms: false, agreeBackground: false, agreeInsurance: false,
 };
 
+const STORAGE_KEY = 'buddyApplyDraft';
+
 export default function BuddyApply() {
   const { theme } = useTheme();
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState(empty);
+  const [step, setStep] = useState(() => {
+    try { return parseInt(sessionStorage.getItem(STORAGE_KEY + '_step') || '0', 10); } catch { return 0; }
+  });
+  const [form, setForm] = useState(() => {
+    try { const saved = sessionStorage.getItem(STORAGE_KEY); return saved ? JSON.parse(saved) : empty; } catch { return empty; }
+  });
   const [idFile, setIdFile]     = useState(null);
   const [selfieFile, setSelfieFile] = useState(null);
   const [idPreview, setIdPreview]   = useState(null);
@@ -40,6 +46,14 @@ export default function BuddyApply() {
   const [error, setError] = useState('');
   const idRef     = useRef();
   const selfieRef = useRef();
+
+  useEffect(() => {
+    try { sessionStorage.setItem(STORAGE_KEY, JSON.stringify(form)); } catch {}
+  }, [form]);
+
+  useEffect(() => {
+    try { sessionStorage.setItem(STORAGE_KEY + '_step', String(step)); } catch {}
+  }, [step]);
 
   const set = (field, val) => setForm(f => ({ ...f, [field]: val }));
 
@@ -155,6 +169,7 @@ export default function BuddyApply() {
         window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`, '_blank');
       }
 
+      try { sessionStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(STORAGE_KEY + '_step'); } catch {}
       setSubmitted(true);
     } catch {
       setError('Something went wrong. Please try again or email hello@onlybuddy.co.uk');

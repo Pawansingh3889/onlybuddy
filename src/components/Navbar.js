@@ -90,7 +90,7 @@ export default function Navbar() {
             )}
 
             {/* Hamburger — mobile only */}
-            <button className="ob-hamburger" onClick={() => setMenuOpen(o => !o)} style={{ background: theme.card2, border: `1px solid ${theme.border}`, borderRadius: 9, width: 34, height: 34, cursor: 'pointer', fontSize: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <button className="ob-hamburger" onClick={() => setMenuOpen(o => !o)} aria-label={menuOpen ? 'Close menu' : 'Open menu'} aria-expanded={menuOpen} style={{ background: theme.card2, border: `1px solid ${theme.border}`, borderRadius: 9, width: 34, height: 34, cursor: 'pointer', fontSize: 16, alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               {menuOpen ? '✕' : '☰'}
             </button>
           </div>

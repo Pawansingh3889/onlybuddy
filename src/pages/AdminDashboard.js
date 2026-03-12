@@ -21,6 +21,13 @@ export default function AdminDashboard() {
   const [actionMsg, setActionMsg] = useState('');
 
   useEffect(() => {
+    if (!selectedApp) return;
+    const onKey = (e) => { if (e.key === 'Escape') setSelectedApp(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [selectedApp]);
+
+  useEffect(() => {
     const unsub1 = onSnapshot(
       query(collection(db, 'applications'), orderBy('createdAt', 'desc')),
       snap => { setApplications(snap.docs.map(d => ({ id: d.id, ...d.data() }))); setLoading(false); },
