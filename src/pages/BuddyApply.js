@@ -53,9 +53,13 @@ export default function BuddyApply() {
   const handleFile = (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
-    const preview = URL.createObjectURL(file);
+    const allowed = ['image/jpeg', 'image/png', 'image/webp', 'application/pdf'];
+    if (!allowed.includes(file.type)) { setError('Only JPG, PNG, WebP or PDF files are allowed.'); e.target.value = ''; return; }
+    if (file.size > 10 * 1024 * 1024) { setError('File must be under 10 MB.'); e.target.value = ''; return; }
+    const preview = file.type === 'application/pdf' ? null : URL.createObjectURL(file);
     if (type === 'id')     { setIdFile(file);     setIdPreview(preview); }
     if (type === 'selfie') { setSelfieFile(file); setSelfiePreview(preview); }
+    setError('');
   };
 
   const validateStep = () => {
@@ -347,9 +351,9 @@ export default function BuddyApply() {
               <div>
                 <label style={labelStyle}>Photo ID (Passport or Driving Licence) *</label>
                 <div onClick={() => idRef.current.click()} style={{ border: `2px dashed ${idFile ? theme.green : theme.border}`, borderRadius: 14, padding: '28px 20px', textAlign: 'center', cursor: 'pointer', background: idFile ? theme.greenBg : theme.card2, transition: 'all 0.2s' }}>
-                  {idPreview ? (
+                  {idFile ? (
                     <div>
-                      <img src={idPreview} alt="ID" style={{ maxHeight: 160, maxWidth: '100%', borderRadius: 8, objectFit: 'contain' }} />
+                      {idPreview && <img src={idPreview} alt="ID preview" style={{ maxHeight: 160, maxWidth: '100%', borderRadius: 8, objectFit: 'contain' }} />}
                       <div style={{ fontSize: 12, color: theme.green, fontWeight: 600, marginTop: 8 }}>✓ {idFile.name}</div>
                     </div>
                   ) : (

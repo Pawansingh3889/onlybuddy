@@ -74,7 +74,14 @@ export default function Login() {
         await sendPasswordResetEmail(auth, email);
         setSuccess('✅ Reset email sent! Check your inbox (and spam folder).');
       } catch (e) {
-        setError(e.code === 'auth/user-not-found' ? 'No account found with that email.' : 'Failed to send reset email. Try again.');
+        const msg =
+          e.code === 'auth/user-not-found'        ? 'No account found with that email.' :
+          e.code === 'auth/invalid-email'         ? 'Please enter a valid email address.' :
+          e.code === 'auth/too-many-requests'     ? 'Too many attempts. Please wait a few minutes.' :
+          e.code === 'auth/network-request-failed'? 'Network error — check your connection.' :
+          e.code === 'auth/invalid-api-key'       ? 'App configuration error. Please contact support.' :
+          `Failed to send reset email. (${e.code || 'unknown error'})`;
+        setError(msg);
       } finally { setLoading(false); }
       return;
     }

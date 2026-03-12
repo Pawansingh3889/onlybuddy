@@ -1,6 +1,6 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
-import { ThemeProvider } from './contexts/ThemeContext';
+import { BrowserRouter, Routes, Route, Navigate, Link } from 'react-router-dom';
+import { ThemeProvider, useTheme } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar         from './components/Navbar';
 import Footer         from './components/Footer';
@@ -51,6 +51,29 @@ function AdminRoute({ children }) {
   return children;
 }
 
+function PrivateRoute({ children }) {
+  const { currentUser, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!currentUser) return <Navigate to="/login" replace />;
+  return children;
+}
+
+function NotFoundPage() {
+  const { theme } = useTheme();
+  return (
+    <div style={{ minHeight: '70vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, textAlign: 'center' }}>
+      <div>
+        <div style={{ fontSize: 72, marginBottom: 16 }}>🤷</div>
+        <h1 style={{ fontSize: 48, fontWeight: 900, color: theme.primary, fontFamily: "'Outfit', sans-serif", marginBottom: 8 }}>404</h1>
+        <p style={{ fontSize: 18, color: theme.muted, marginBottom: 32 }}>Page not found — it might have moved or never existed.</p>
+        <Link to="/" style={{ display: 'inline-block', padding: '13px 28px', borderRadius: 12, background: `linear-gradient(135deg, ${theme.primary}, ${theme.primaryDark})`, color: '#fff', fontWeight: 700, textDecoration: 'none', fontSize: 15 }}>
+          ← Back to Home
+        </Link>
+      </div>
+    </div>
+  );
+}
+
 function PublicLayout({ children }) {
   return (
     <>
@@ -70,7 +93,7 @@ function AppRoutes() {
         <Route path="/about"   element={<PublicLayout><AboutPage   /></PublicLayout>} />
         <Route path="/pricing" element={<PublicLayout><PricingPage /></PublicLayout>} />
         <Route path="/apply"   element={<PublicLayout><BuddyApply  /></PublicLayout>} />
-        <Route path="/book"    element={<PublicLayout><BookingPage /></PublicLayout>} />
+        <Route path="/book"    element={<PrivateRoute><PublicLayout><BookingPage /></PublicLayout></PrivateRoute>} />
         <Route path="/login"   element={<PublicLayout><Login       /></PublicLayout>} />
 
         {/* Legal */}
@@ -83,7 +106,7 @@ function AppRoutes() {
         {/* Admin — protected */}
         <Route path="/admin"   element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
-        <Route path="*"        element={<Navigate to="/" replace />} />
+        <Route path="*"        element={<PublicLayout><NotFoundPage /></PublicLayout>} />
       </Routes>
     </Suspense>
   );

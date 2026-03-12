@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { useAuth } from '../contexts/AuthContext';
@@ -9,6 +9,8 @@ export default function Navbar() {
   const [menuOpen, setMenuOpen] = useState(false);
   const loc = useLocation();
   const isActive = (path) => loc.pathname === path;
+
+  useEffect(() => { setMenuOpen(false); }, [loc.pathname]);
 
   const navLinks = [
     { to: '/',        label: 'Home'           },

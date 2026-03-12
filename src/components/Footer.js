@@ -14,8 +14,7 @@ export default function Footer() {
           <div style={{ fontSize: 12, color: theme.muted, lineHeight: 1.9 }}>
             📍 Hull, East Yorkshire<br />
             📧 hello@onlybuddy.co.uk<br />
-            {/* ⚠️ REPLACE WITH YOUR REAL NUMBER BEFORE GOING LIVE */}
-            📞 <span style={{ color: theme.text2 }}>01482 000 000</span>
+            📞 <span style={{ color: theme.text2 }}>07442 382622</span>
           </div>
         </div>
 
@@ -67,9 +66,7 @@ export default function Footer() {
           <Link to="/privacy" style={{ display: 'block', fontSize: 13, color: theme.text2, marginBottom: 8, textDecoration: 'none' }}>Privacy Policy</Link>
           <div style={{ fontSize: 13, color: theme.text2, marginBottom: 8 }}>Cookie Policy</div>
           <div style={{ fontSize: 12, color: theme.muted, lineHeight: 1.7, marginTop: 12 }}>
-            {/* ⚠️ FILL IN BEFORE GO-LIVE */}
-            ICO Reg: <span style={{ color: theme.text2 }}>ZB000000</span><br />
-            Co. No: <span style={{ color: theme.text2 }}>00000000</span>
+            Registered in England & Wales
           </div>
         </div>
 
