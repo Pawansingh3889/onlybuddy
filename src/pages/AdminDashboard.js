@@ -45,7 +45,7 @@ export default function AdminDashboard() {
       setActionMsg('✅ ' + app.fullName + ' approved!');
       setTimeout(() => setActionMsg(''), 3000);
       setSelectedApp(null);
-    } catch (e) { console.error(e); }
+    } catch { setActionMsg('⚠️ Failed to approve — try again.'); setTimeout(() => setActionMsg(''), 3000); }
   };
 
   const rejectApplication = async (app) => {
@@ -54,7 +54,7 @@ export default function AdminDashboard() {
       setActionMsg('❌ ' + app.fullName + ' rejected.');
       setTimeout(() => setActionMsg(''), 3000);
       setSelectedApp(null);
-    } catch (e) { console.error(e); }
+    } catch { setActionMsg('⚠️ Failed to reject — try again.'); setTimeout(() => setActionMsg(''), 3000); }
   };
 
   const upgradeTier = async (buddyId, newTier) => {
@@ -62,7 +62,7 @@ export default function AdminDashboard() {
       await updateDoc(doc(db, 'users', buddyId), { tier: newTier, updatedAt: serverTimestamp() });
       setActionMsg('⬆️ Tier updated!');
       setTimeout(() => setActionMsg(''), 3000);
-    } catch (e) { console.error(e); }
+    } catch { setActionMsg('⚠️ Failed to update tier — try again.'); setTimeout(() => setActionMsg(''), 3000); }
   };
 
   const pending = applications.filter(a => a.status === 'pending');

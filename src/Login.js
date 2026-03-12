@@ -247,7 +247,7 @@ export default function Login() {
                   <>
                     <div>
                       <label style={label}>Full Name</label>
-                      <input className="auth-input" style={inp(false)} placeholder="e.g. James Smith" value={name} onChange={e => setName(e.target.value)} />
+                      <input className="auth-input" style={inp(false)} placeholder="e.g. Charlie Lambert" value={name} onChange={e => setName(e.target.value)} />
                     </div>
                     <div>
                       <label style={label}>Phone Number</label>

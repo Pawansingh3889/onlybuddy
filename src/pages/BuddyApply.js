@@ -5,14 +5,12 @@ import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import emailjs from '@emailjs/browser';
 
-// ── CONFIG ─────────────────────────────────────────────────────────────
-// Fill these in with your real values:
-const ADMIN_EMAIL    = 'admin@onlybuddy.co.uk'     // ⚠️ REPLACE WITH YOUR REAL EMAIL;        // your email
-const ADMIN_WHATSAPP = '447700000000'               // ⚠️ REPLACE WITH YOUR REAL WHATSAPP;                // your WhatsApp e.g. 447712345678
-const EMAILJS_SERVICE  = 'service_placeholder'     // ⚠️ GET FROM emailjs.com;
-const EMAILJS_TEMPLATE = 'template_placeholder'   // ⚠️ GET FROM emailjs.com;
-const EMAILJS_KEY      = 'key_placeholder'          // ⚠️ GET FROM emailjs.com;
-// ───────────────────────────────────────────────────────────────────────
+const ADMIN_EMAIL      = process.env.REACT_APP_ADMIN_EMAIL;
+const ADMIN_WHATSAPP   = process.env.REACT_APP_ADMIN_WHATSAPP;
+const EMAILJS_SERVICE  = process.env.REACT_APP_EMAILJS_SERVICE_ID;
+const EMAILJS_TEMPLATE = process.env.REACT_APP_EMAILJS_ADMIN_TEMPLATE_ID;
+const EMAILJS_KEY      = process.env.REACT_APP_EMAILJS_PUBLIC_KEY;
+const BASE_URL         = process.env.REACT_APP_BASE_URL || window.location.origin;
 
 const VEHICLE_OPTIONS = ['On foot', 'Bicycle', 'Motorbike', 'Car', 'Van'];
 const HULL_ZONES = ['HU1','HU2','HU3','HU4','HU5','HU6','HU7','HU8','HU9','HU10','HU11','HU12','HU13','HU14','HU15','HU16','HU17'];
@@ -130,29 +128,31 @@ export default function BuddyApply() {
       });
 
       // Send email notification via EmailJS
-      try {
-        await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
-          to_email: ADMIN_EMAIL,
-          applicant_name: form.fullName,
-          applicant_email: form.email,
-          applicant_phone: form.phone,
-          vehicle: form.vehicleType,
-          postcode: form.postcode,
-          application_id: docRef.id,
-          admin_link: `https://onlybuddy.vercel.app/admin`,
-        }, EMAILJS_KEY);
-      } catch (emailErr) {
-        console.warn('Email notification failed:', emailErr);
-        // Don't block submission if email fails
+      if (EMAILJS_SERVICE && EMAILJS_TEMPLATE && EMAILJS_KEY && ADMIN_EMAIL) {
+        try {
+          await emailjs.send(EMAILJS_SERVICE, EMAILJS_TEMPLATE, {
+            to_email:       ADMIN_EMAIL,
+            applicant_name: form.fullName,
+            applicant_email: form.email,
+            applicant_phone: form.phone,
+            vehicle:         form.vehicleType,
+            postcode:        form.postcode,
+            application_id:  docRef.id,
+            admin_link:      `${BASE_URL}/admin`,
+          }, EMAILJS_KEY);
+        } catch {
+          // Non-critical — don't block submission if email fails
+        }
       }
 
       // WhatsApp notification (opens in new tab)
-      const waMsg = encodeURIComponent(`🆕 New Buddy Application!\n\nName: ${form.fullName}\nPhone: ${form.phone}\nPostcode: ${form.postcode}\nVehicle: ${form.vehicleType}\n\nReview: https://onlybuddy.vercel.app/admin`);
-      window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`, '_blank');
+      if (ADMIN_WHATSAPP) {
+        const waMsg = encodeURIComponent(`🆕 New Buddy Application!\n\nName: ${form.fullName}\nPhone: ${form.phone}\nPostcode: ${form.postcode}\nVehicle: ${form.vehicleType}\n\nReview: ${BASE_URL}/admin`);
+        window.open(`https://wa.me/${ADMIN_WHATSAPP}?text=${waMsg}`, '_blank');
+      }
 
       setSubmitted(true);
-    } catch (err) {
-      console.error(err);
+    } catch {
       setError('Something went wrong. Please try again or email hello@onlybuddy.co.uk');
     } finally {
       setSubmitting(false);

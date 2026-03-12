@@ -5,12 +5,16 @@ import { db } from '../firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 
-// ─── Pricing model ───────────────────────────────────────────
-// Grocery Run   : 15% of basket (min £4.99)
-// Buy & Deliver : £6.99 under 2 miles / £9.99 over
-// Queue for Me  : £8.00/hr billed in 30-min slots (min £4.00)
-// Parcel/Return : £6.99 under 2 miles / £9.99 over
-// Prescription  : £6.99 flat anywhere in Hull
+// ─── Pricing constants ────────────────────────────────────────
+const PRICING = {
+  GROCERY_RATE:       0.15,   // 15% of basket
+  GROCERY_MIN:        4.99,   // minimum grocery fee
+  DISTANCE_SHORT:     6.99,   // under 2 miles
+  DISTANCE_LONG:      9.99,   // over 2 miles
+  QUEUE_SLOT:         4.00,   // per 30-minute slot
+  QUEUE_MIN_MINUTES:  30,
+  PRESCRIPTION_FLAT:  6.99,
+};
 // ─────────────────────────────────────────────────────────────
 
 const ERRAND_TYPES = [
@@ -18,7 +22,7 @@ const ERRAND_TYPES = [
   { id:'buy',      icon:'🛍️', label:'Buy & Deliver',    color:'#7C3AED', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
   { id:'queue',    icon:'⏳', label:'Queue for Me',      color:'#D97706', pricing:'£8.00/hr · min 30 min',      type:'hourly' },
   { id:'parcel',   icon:'📦', label:'Parcel & Returns', color:'#2563EB', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
-  { id:'pharmacy', icon:'💊', label:'Prescription Run', color:'#DB2777', pricing:'£6.99 flat — all of Hull',   type:'flat', fee:6.99 },
+  { id:'pharmacy', icon:'💊', label:'Prescription Run', color:'#DB2777', pricing:'£6.99 flat — all of Hull',   type:'flat', fee:PRICING.PRESCRIPTION_FLAT },
 ];
 
 const HULL_STORES = [
@@ -44,16 +48,13 @@ const GROCERY_SUGGESTIONS = [
   'Paracetamol (16 tablets)', 'Ibuprofen (16 tablets)',
 ];
 
-const calcGroceryFee = (total) => {
-  const fee = total * 0.15;
-  return Math.max(fee, 4.99);
-};
+const calcGroceryFee = (total) => Math.max(total * PRICING.GROCERY_RATE, PRICING.GROCERY_MIN);
 
-const calcDistanceFee = (miles) => miles <= 2 ? 6.99 : 9.99;
+const calcDistanceFee = (miles) => miles <= 2 ? PRICING.DISTANCE_SHORT : PRICING.DISTANCE_LONG;
 
 const calcQueueFee = (mins) => {
-  const slots = Math.ceil(Math.max(mins, 30) / 30);
-  return slots * 4.00;
+  const slots = Math.ceil(Math.max(mins, PRICING.QUEUE_MIN_MINUTES) / PRICING.QUEUE_MIN_MINUTES);
+  return slots * PRICING.QUEUE_SLOT;
 };
 
 export default function BookingPage() {
@@ -200,8 +201,7 @@ export default function BookingPage() {
       });
       setOrderId(docRef.id);
       setSubmitted(true);
-    } catch (e) {
-      console.error(e);
+    } catch {
       setError('Something went wrong. Please try again.');
     } finally { setSubmitting(false); }
   };

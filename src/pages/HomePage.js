@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 import { db } from '../firebase';
-import { collection, query, where, onSnapshot } from 'firebase/firestore';
+import { collection, query, where, getCountFromServer } from 'firebase/firestore';
 
 const ERRAND_TYPES = [
   { icon: '🛒', label: 'Grocery Run',      color: '#059669', desc: 'Any Hull supermarket or local shop — we collect and deliver' },
@@ -35,13 +35,11 @@ export default function HomePage() {
 
   useEffect(() => {
     const q = query(collection(db, 'users'), where('role', '==', 'buddy'), where('status', '==', 'approved'));
-    const unsub = onSnapshot(q, snap => setBuddyCount(snap.size), () => {});
-    return unsub;
+    getCountFromServer(q).then(snap => setBuddyCount(snap.data().count)).catch(() => {});
   }, []);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'orders'), snap => setOrderCount(snap.size), () => {});
-    return unsub;
+    getCountFromServer(collection(db, 'orders')).then(snap => setOrderCount(snap.data().count)).catch(() => {});
   }, []);
 
   // ── Gradients that ACTUALLY change between light/dark

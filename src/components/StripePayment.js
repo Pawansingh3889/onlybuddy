@@ -17,7 +17,7 @@ function loadStripe() {
 }
 
 export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCancel }) {
-  const { theme: T } = useTheme();
+  const { theme: T, isDark } = useTheme();
   const mountRef        = useRef(null);
   const [stripe, setStripe]         = useState(null);
   const [elements, setElements]     = useState(null);
@@ -41,13 +41,13 @@ export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCance
       const els = str.elements({
         clientSecret: json.clientSecret,
         appearance: {
-          theme: 'night',
+          theme: isDark ? 'night' : 'stripe',
           variables: {
-            colorPrimary: '#6D28D9',
-            colorBackground: '#1e1b4b',
-            colorText: '#ffffff',
-            borderRadius: '12px',
-            fontFamily: 'DM Sans, sans-serif',
+            colorPrimary:    isDark ? '#A78BFA' : '#6366F1',
+            colorBackground: isDark ? '#0D1117'  : '#FFFFFF',
+            colorText:       isDark ? '#E6EDF3'  : '#0F172A',
+            borderRadius:    '12px',
+            fontFamily:      'Inter, sans-serif',
           },
         },
       });
@@ -111,7 +111,7 @@ export function StripePayment({ amount, jobId, customerEmail, onSuccess, onCance
 
       {/* Stripe mounts into this div via ref */}
       <div ref={mountRef} style={{
-        background: '#1e1b4b', border: `1.5px solid ${T.border}`,
+        background: T.card2, border: `1.5px solid ${T.border}`,
         borderRadius: 12, padding: '14px 16px',
         minHeight: 60,
       }} />

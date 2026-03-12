@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Projects/onlybuddy-CLEAN/onlybuddy-clean -type f -name .env*)",
+      "Bash(npm install:*)",
+      "Bash(CI=true npm test -- --watchAll=false)"
+    ]
+  }
+}

@@ -1,22 +1,25 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import Navbar         from './components/Navbar';
 import Footer         from './components/Footer';
-import HomePage       from './pages/HomePage';
-import AboutPage      from './pages/AboutPage';
-import PricingPage    from './pages/PricingPage';
-import BookingPage    from './pages/BookingPage';
-import BuddyApply     from './pages/BuddyApply';
-import AdminDashboard from './pages/AdminDashboard';
-import JoinPage       from './pages/JoinPage';
-import TermsPage      from './pages/TermsPage';
-import PrivacyPage    from './pages/PrivacyPage';
-import Login          from './Login';
+import ErrorBoundary  from './components/ErrorBoundary';
+
+const HomePage       = lazy(() => import('./pages/HomePage'));
+const AboutPage      = lazy(() => import('./pages/AboutPage'));
+const PricingPage    = lazy(() => import('./pages/PricingPage'));
+const BookingPage    = lazy(() => import('./pages/BookingPage'));
+const BuddyApply     = lazy(() => import('./pages/BuddyApply'));
+const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const JoinPage       = lazy(() => import('./pages/JoinPage'));
+const TermsPage      = lazy(() => import('./pages/TermsPage'));
+const PrivacyPage    = lazy(() => import('./pages/PrivacyPage'));
+const Login          = lazy(() => import('./Login'));
 
 const GlobalStyles = () => (
   <style>{`
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800;900&family=Inter:wght@400;500;600;700&display=swap');
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { overflow-x: hidden; max-width: 100%; }
     body {
@@ -35,9 +38,15 @@ const GlobalStyles = () => (
   `}</style>
 );
 
+const PageLoader = () => (
+  <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#64748B', fontSize: 15 }}>
+    Loading…
+  </div>
+);
+
 function AdminRoute({ children }) {
   const { currentUser, userRole, loading } = useAuth();
-  if (loading) return <div style={{ padding:60, textAlign:'center', color:'#64748B', fontSize:16 }}>Loading…</div>;
+  if (loading) return <PageLoader />;
   if (!currentUser || userRole !== 'admin') return <Navigate to="/login" replace />;
   return children;
 }
@@ -54,27 +63,29 @@ function PublicLayout({ children }) {
 
 function AppRoutes() {
   return (
-    <Routes>
-      {/* Main pages */}
-      <Route path="/"        element={<PublicLayout><HomePage    /></PublicLayout>} />
-      <Route path="/about"   element={<PublicLayout><AboutPage   /></PublicLayout>} />
-      <Route path="/pricing" element={<PublicLayout><PricingPage /></PublicLayout>} />
-      <Route path="/apply"   element={<PublicLayout><BuddyApply  /></PublicLayout>} />
-      <Route path="/book"    element={<PublicLayout><BookingPage /></PublicLayout>} />
-      <Route path="/login"   element={<PublicLayout><Login       /></PublicLayout>} />
+    <Suspense fallback={<PageLoader />}>
+      <Routes>
+        {/* Main pages */}
+        <Route path="/"        element={<PublicLayout><HomePage    /></PublicLayout>} />
+        <Route path="/about"   element={<PublicLayout><AboutPage   /></PublicLayout>} />
+        <Route path="/pricing" element={<PublicLayout><PricingPage /></PublicLayout>} />
+        <Route path="/apply"   element={<PublicLayout><BuddyApply  /></PublicLayout>} />
+        <Route path="/book"    element={<PublicLayout><BookingPage /></PublicLayout>} />
+        <Route path="/login"   element={<PublicLayout><Login       /></PublicLayout>} />
 
-      {/* Legal */}
-      <Route path="/terms"   element={<PublicLayout><TermsPage   /></PublicLayout>} />
-      <Route path="/privacy" element={<PublicLayout><PrivacyPage /></PublicLayout>} />
+        {/* Legal */}
+        <Route path="/terms"   element={<PublicLayout><TermsPage   /></PublicLayout>} />
+        <Route path="/privacy" element={<PublicLayout><PrivacyPage /></PublicLayout>} />
 
-      {/* Ad landing page — NO Navbar/Footer (distraction-free) */}
-      <Route path="/join"    element={<JoinPage />} />
+        {/* Ad landing page — NO Navbar/Footer (distraction-free) */}
+        <Route path="/join"    element={<JoinPage />} />
 
-      {/* Admin — protected */}
-      <Route path="/admin"   element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        {/* Admin — protected */}
+        <Route path="/admin"   element={<AdminRoute><AdminDashboard /></AdminRoute>} />
 
-      <Route path="*"        element={<Navigate to="/" replace />} />
-    </Routes>
+        <Route path="*"        element={<Navigate to="/" replace />} />
+      </Routes>
+    </Suspense>
   );
 }
 
@@ -83,9 +94,11 @@ export default function App() {
     <ThemeProvider>
       <AuthProvider>
         <GlobalStyles />
-        <BrowserRouter>
-          <AppRoutes />
-        </BrowserRouter>
+        <ErrorBoundary>
+          <BrowserRouter>
+            <AppRoutes />
+          </BrowserRouter>
+        </ErrorBoundary>
       </AuthProvider>
     </ThemeProvider>
   );
