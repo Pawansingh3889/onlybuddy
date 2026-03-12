@@ -3,7 +3,8 @@ import { useAuth } from './contexts/AuthContext';
 import { useNavigate, Link } from 'react-router-dom';
 import { useTheme } from './contexts/ThemeContext';
 import { sendPasswordResetEmail } from 'firebase/auth';
-import { auth } from './firebase';
+import { auth, db } from './firebase';
+import { doc, getDoc } from 'firebase/firestore';
 
 // ── Email validation
 const isValidEmail = (e) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e);
@@ -102,11 +103,18 @@ export default function Login() {
     setLoading(true);
     try {
       if (mode === 'login') {
-        await login(email, password);
+        const { user } = await login(email, password);
+        try {
+          const snap = await getDoc(doc(db, 'users', user.uid));
+          const role = snap.exists() ? (snap.data()?.role || 'customer') : 'customer';
+          if (role === 'admin') { navigate('/admin'); return; }
+          if (role === 'buddy') { navigate('/buddy'); return; }
+        } catch {}
+        navigate('/');
       } else {
         await signup(email, password, name, phone);
+        navigate('/');
       }
-      navigate('/');
     } catch (e) {
       const msg =
         e.code === 'auth/wrong-password'           ? 'Incorrect password. Try again or reset it below.' :

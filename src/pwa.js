@@ -4,7 +4,6 @@ export async function registerSW() {
   if (!('serviceWorker' in navigator)) return null;
   try {
     const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-    console.log('✅ SW registered');
     return reg;
   } catch (e) {
     console.warn('SW registration failed:', e);
@@ -31,7 +30,6 @@ export async function subscribeToPush(onSuccess) {
     // });
 
     // For now — in-app notifications via Firebase work without VAPID
-    console.log('✅ Push permission granted');
     if (onSuccess) onSuccess();
     return { success: true };
   } catch (e) {

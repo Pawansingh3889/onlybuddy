@@ -11,7 +11,8 @@ const AboutPage      = lazy(() => import('./pages/AboutPage'));
 const PricingPage    = lazy(() => import('./pages/PricingPage'));
 const BookingPage    = lazy(() => import('./pages/BookingPage'));
 const BuddyApply     = lazy(() => import('./pages/BuddyApply'));
-const AdminDashboard = lazy(() => import('./pages/AdminDashboard'));
+const AdminDashboard  = lazy(() => import('./pages/AdminDashboard'));
+const BuddyDashboard  = lazy(() => import('./pages/BuddyDashboard'));
 const JoinPage       = lazy(() => import('./pages/JoinPage'));
 const TermsPage      = lazy(() => import('./pages/TermsPage'));
 const PrivacyPage    = lazy(() => import('./pages/PrivacyPage'));
@@ -49,6 +50,14 @@ function AdminRoute({ children }) {
   const { currentUser, userRole, loading } = useAuth();
   if (loading) return <PageLoader />;
   if (!currentUser || userRole !== 'admin') return <Navigate to="/login" replace />;
+  return children;
+}
+
+function BuddyRoute({ children }) {
+  const { currentUser, userRole, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!currentUser) return <Navigate to="/login" replace />;
+  if (userRole !== 'buddy' && userRole !== 'admin') return <Navigate to="/" replace />;
   return children;
 }
 
@@ -106,6 +115,9 @@ function AppRoutes() {
 
         {/* Admin — protected */}
         <Route path="/admin"   element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+
+        {/* Buddy dashboard — protected */}
+        <Route path="/buddy"   element={<BuddyRoute><BuddyDashboard /></BuddyRoute>} />
 
         <Route path="*"        element={<PublicLayout><NotFoundPage /></PublicLayout>} />
       </Routes>

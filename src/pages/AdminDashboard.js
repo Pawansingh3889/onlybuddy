@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTheme } from '../contexts/ThemeContext';
 import { db } from '../firebase';
-import { collection, onSnapshot, doc, updateDoc, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc, getDocs, query, orderBy, where, serverTimestamp } from 'firebase/firestore';
 
 const TABS = ['Overview', 'Applications', 'Orders', 'Buddies'];
 const TIER_CONFIG = {
@@ -48,9 +48,17 @@ export default function AdminDashboard() {
 
   const approveApplication = async (app) => {
     try {
+      // Update application doc
       await updateDoc(doc(db, 'applications', app.id), { status: 'approved', updatedAt: serverTimestamp() });
-      setActionMsg('✅ ' + app.fullName + ' approved!');
-      setTimeout(() => setActionMsg(''), 3000);
+      // Promote their user account to buddy role
+      const userSnap = await getDocs(query(collection(db, 'users'), where('email', '==', app.email)));
+      if (!userSnap.empty) {
+        await updateDoc(doc(db, 'users', userSnap.docs[0].id), {
+          role: 'buddy', status: 'approved', tier: 'new', updatedAt: serverTimestamp(),
+        });
+      }
+      setActionMsg('✅ ' + app.fullName + ' approved — they can now log in as a Buddy!');
+      setTimeout(() => setActionMsg(''), 4000);
       setSelectedApp(null);
     } catch { setActionMsg('⚠️ Failed to approve — try again.'); setTimeout(() => setActionMsg(''), 3000); }
   };
@@ -58,6 +66,11 @@ export default function AdminDashboard() {
   const rejectApplication = async (app) => {
     try {
       await updateDoc(doc(db, 'applications', app.id), { status: 'rejected', updatedAt: serverTimestamp() });
+      // Mark user account as rejected too (if they have one)
+      const userSnap = await getDocs(query(collection(db, 'users'), where('email', '==', app.email)));
+      if (!userSnap.empty) {
+        await updateDoc(doc(db, 'users', userSnap.docs[0].id), { status: 'rejected', updatedAt: serverTimestamp() });
+      }
       setActionMsg('❌ ' + app.fullName + ' rejected.');
       setTimeout(() => setActionMsg(''), 3000);
       setSelectedApp(null);
