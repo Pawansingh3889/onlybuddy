@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { db } from '../firebase';
 import {
   collection, onSnapshot, doc, updateDoc, getDoc,
-  query, orderBy, where, serverTimestamp, arrayUnion
+  query, where, serverTimestamp, arrayUnion
 } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 
@@ -76,12 +76,14 @@ export default function BuddyDashboard() {
   useEffect(() => {
     const q = query(
       collection(db, 'orders'),
-      where('status', '==', 'pending'),
-      orderBy('createdAt', 'desc')
+      where('status', '==', 'pending')
     );
     return onSnapshot(q, snap => {
-      setAvailableJobs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, () => {});
+      const jobs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+      // Sort by createdAt in JS to avoid needing a Firestore composite index
+      jobs.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+      setAvailableJobs(jobs);
+    }, (err) => { console.error('Jobs query error:', err.message); });
   }, []);
 
   // ── Live: MY active jobs (accepted or in_progress) ─────────────────────
@@ -90,12 +92,11 @@ export default function BuddyDashboard() {
     const q = query(
       collection(db, 'orders'),
       where('buddyId', '==', currentUser.uid),
-      where('status', 'in', ['accepted', 'in_progress']),
-      orderBy('createdAt', 'desc')
+      where('status', 'in', ['accepted', 'in_progress'])
     );
     return onSnapshot(q, snap => {
       setMyJobs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
-    }, () => {});
+    }, (err) => { console.error('Active jobs error:', err.message); });
   }, [currentUser]);
 
   // ── Live: completed jobs (this buddy) ──────────────────────────────────
@@ -104,8 +105,7 @@ export default function BuddyDashboard() {
     const q = query(
       collection(db, 'orders'),
       where('buddyId', '==', currentUser.uid),
-      where('status', '==', 'completed'),
-      orderBy('createdAt', 'desc')
+      where('status', '==', 'completed')
     );
     return onSnapshot(q, snap => {
       setCompletedJobs(snap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -662,7 +662,7 @@ function BuddyProfileCard({ profile, user, theme, isDark, flash }) {
         <div style={{ fontSize: 14, fontWeight: 800, color: theme.text, fontFamily: "'Outfit',sans-serif", marginBottom: 12 }}>💬 Need Help?</div>
         {[
           ['📧 Email', 'hello@onlybuddy.co.uk'],
-          ['💬 WhatsApp', '07442 382622'],
+          ['💬 WhatsApp', '07XXX XXXXXX'],
         ].map(([k, v]) => (
           <div key={k} style={{ fontSize: 13, color: theme.muted, marginBottom: 8 }}>{k}: <strong style={{ color: theme.text }}>{v}</strong></div>
         ))}

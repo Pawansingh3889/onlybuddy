@@ -13,6 +13,7 @@ export default function Navbar() {
   const navLinks = [
     { to: '/',        label: 'Home'           },
     { to: '/about',   label: 'How It Works'   },
+    { to: '/buddies', label: '🟢 Find a Buddy' },
     { to: '/pricing', label: 'Pricing'        },
     { to: '/apply',   label: 'Become a Buddy', highlight: true },
   ];
