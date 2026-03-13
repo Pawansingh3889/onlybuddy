@@ -114,6 +114,14 @@ export default function BuddyApply() {
     window.scrollTo(0, 0);
   };
 
+  const uploadWithTimeout = async (storageRef, file, ms = 30000) => {
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('Upload timed out')), ms)
+    );
+    await Promise.race([uploadBytes(storageRef, file), timeout]);
+    return getDownloadURL(storageRef);
+  };
+
   const submit = async () => {
     const err = validateStep();
     if (err) { setError(err); return; }
@@ -122,19 +130,34 @@ export default function BuddyApply() {
     try {
       let idUrl = '', selfieUrl = '';
 
-      // Upload files to Firebase Storage
+      // Upload files to Firebase Storage (non-blocking if Storage rules reject)
       if (idFile) {
-        const idRef2 = ref(storage, `buddy-applications/${Date.now()}-id-${idFile.name}`);
-        await uploadBytes(idRef2, idFile);
-        idUrl = await getDownloadURL(idRef2);
+        try {
+          setError('DEBUG: Uploading ID photo...');
+          const idRef2 = ref(storage, `buddy-applications/${Date.now()}-id-${idFile.name}`);
+          idUrl = await uploadWithTimeout(idRef2, idFile);
+          setError('DEBUG: ID uploaded OK');
+        } catch (uploadErr) {
+          setError(`DEBUG: ID upload failed (continuing): ${uploadErr.message}`);
+          await new Promise(r => setTimeout(r, 2000));
+          setError('');
+        }
       }
       if (selfieFile) {
-        const sRef = ref(storage, `buddy-applications/${Date.now()}-selfie-${selfieFile.name}`);
-        await uploadBytes(sRef, selfieFile);
-        selfieUrl = await getDownloadURL(sRef);
+        try {
+          setError('DEBUG: Uploading selfie...');
+          const sRef = ref(storage, `buddy-applications/${Date.now()}-selfie-${selfieFile.name}`);
+          selfieUrl = await uploadWithTimeout(sRef, selfieFile);
+          setError('DEBUG: Selfie uploaded OK');
+        } catch (uploadErr) {
+          setError(`DEBUG: Selfie upload failed (continuing): ${uploadErr.message}`);
+          await new Promise(r => setTimeout(r, 2000));
+          setError('');
+        }
       }
 
       // Save to Firestore
+      setError('DEBUG: Saving to Firestore...');
       const docRef = await addDoc(collection(db, 'applications'), {
         ...form,
         idPhotoUrl: idUrl,
@@ -171,8 +194,10 @@ export default function BuddyApply() {
 
       try { sessionStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(STORAGE_KEY + '_step'); } catch {}
       setSubmitted(true);
-    } catch {
-      setError('Something went wrong. Please try again or email hello@onlybuddy.co.uk');
+    } catch (e) {
+      console.error('Submit error full:', e);
+      const msg = `ERROR [${e?.code || 'no-code'}]: ${e?.message || 'unknown'}`;
+      setError(msg);
     } finally {
       setSubmitting(false);
     }
