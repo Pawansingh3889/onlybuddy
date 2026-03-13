@@ -6,7 +6,7 @@ import {
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
-import { doc, setDoc, getDoc, serverTimestamp } from 'firebase/firestore';
+import { doc, setDoc, getDoc, getDocs, collection, query, where, updateDoc, serverTimestamp } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 
 const AuthContext = createContext();
@@ -41,7 +41,24 @@ export function AuthProvider({ children }) {
       if (user) {
         try {
           const snap = await getDoc(doc(db, 'users', user.uid));
-          setUserRole(snap.exists() ? (snap.data()?.role || 'customer') : 'customer');
+          let role = snap.exists() ? (snap.data()?.role || 'customer') : 'customer';
+          // Auto-promote: if customer has an approved application, upgrade to buddy
+          if (role === 'customer' && user.email) {
+            try {
+              const appSnap = await getDocs(query(
+                collection(db, 'applications'),
+                where('email', '==', user.email),
+                where('status', '==', 'approved')
+              ));
+              if (!appSnap.empty) {
+                await updateDoc(doc(db, 'users', user.uid), {
+                  role: 'buddy', status: 'approved', tier: 'new', updatedAt: serverTimestamp(),
+                });
+                role = 'buddy';
+              }
+            } catch { /* non-critical */ }
+          }
+          setUserRole(role);
         } catch {
           setUserRole('customer');
         }

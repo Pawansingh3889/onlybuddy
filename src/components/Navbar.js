@@ -76,8 +76,8 @@ export default function Navbar() {
             {/* Auth buttons — desktop */}
             {currentUser ? (
               <div className="ob-nav-desktop" style={{ alignItems: 'center', gap: 6 }}>
-                <Link to={userRole === 'admin' ? '/admin' : '/book'} style={{ textDecoration: 'none', padding: '7px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700, background: theme.primaryBg, color: theme.primary, border: `1px solid ${theme.primary}33` }}>
-                  {userRole === 'admin' ? '⚙️ Admin' : 'My Orders'}
+                <Link to={userRole === 'admin' ? '/admin' : userRole === 'buddy' ? '/buddy' : '/book'} style={{ textDecoration: 'none', padding: '7px 14px', borderRadius: 9, fontSize: 12, fontWeight: 700, background: theme.primaryBg, color: theme.primary, border: `1px solid ${theme.primary}33` }}>
+                  {userRole === 'admin' ? '⚙️ Admin' : userRole === 'buddy' ? '🚴 Dashboard' : 'My Orders'}
                 </Link>
                 <button onClick={logout} style={{ background: theme.redBg, border: `1px solid ${theme.red}33`, color: theme.red, borderRadius: 9, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>
                   Sign Out
@@ -107,8 +107,8 @@ export default function Navbar() {
             <div style={{ height: 1, background: theme.border, margin: '8px 0' }} />
             {currentUser ? (
               <>
-                <Link to={userRole === 'admin' ? '/admin' : '/book'} onClick={() => setMenuOpen(false)} style={{ textDecoration: 'none', padding: '13px 16px', borderRadius: 11, fontSize: 15, fontWeight: 600, background: theme.primaryBg, color: theme.primary, display: 'block' }}>
-                  {userRole === 'admin' ? '⚙️ Admin Panel' : '📋 My Orders'}
+                <Link to={userRole === 'admin' ? '/admin' : userRole === 'buddy' ? '/buddy' : '/book'} onClick={() => setMenuOpen(false)} style={{ textDecoration: 'none', padding: '13px 16px', borderRadius: 11, fontSize: 15, fontWeight: 600, background: theme.primaryBg, color: theme.primary, display: 'block' }}>
+                  {userRole === 'admin' ? '⚙️ Admin Panel' : userRole === 'buddy' ? '🚴 Buddy Dashboard' : '📋 My Orders'}
                 </Link>
                 <button onClick={() => { logout(); setMenuOpen(false); }} style={{ padding: '13px 16px', borderRadius: 11, border: `1px solid ${theme.red}44`, background: theme.redBg, color: theme.red, fontSize: 15, fontWeight: 600, cursor: 'pointer', textAlign: 'left', fontFamily: 'inherit' }}>
                   Sign Out
