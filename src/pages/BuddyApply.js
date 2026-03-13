@@ -133,31 +133,18 @@ export default function BuddyApply() {
       // Upload files to Firebase Storage (non-blocking if Storage rules reject)
       if (idFile) {
         try {
-          setError('DEBUG: Uploading ID photo...');
           const idRef2 = ref(storage, `buddy-applications/${Date.now()}-id-${idFile.name}`);
           idUrl = await uploadWithTimeout(idRef2, idFile);
-          setError('DEBUG: ID uploaded OK');
-        } catch (uploadErr) {
-          setError(`DEBUG: ID upload failed (continuing): ${uploadErr.message}`);
-          await new Promise(r => setTimeout(r, 2000));
-          setError('');
-        }
+        } catch { /* save application even if photo upload fails */ }
       }
       if (selfieFile) {
         try {
-          setError('DEBUG: Uploading selfie...');
           const sRef = ref(storage, `buddy-applications/${Date.now()}-selfie-${selfieFile.name}`);
           selfieUrl = await uploadWithTimeout(sRef, selfieFile);
-          setError('DEBUG: Selfie uploaded OK');
-        } catch (uploadErr) {
-          setError(`DEBUG: Selfie upload failed (continuing): ${uploadErr.message}`);
-          await new Promise(r => setTimeout(r, 2000));
-          setError('');
-        }
+        } catch { /* save application even if photo upload fails */ }
       }
 
       // Save to Firestore
-      setError('DEBUG: Saving to Firestore...');
       const docRef = await addDoc(collection(db, 'applications'), {
         ...form,
         idPhotoUrl: idUrl,
@@ -195,8 +182,9 @@ export default function BuddyApply() {
       try { sessionStorage.removeItem(STORAGE_KEY); sessionStorage.removeItem(STORAGE_KEY + '_step'); } catch {}
       setSubmitted(true);
     } catch (e) {
-      console.error('Submit error full:', e);
-      const msg = `ERROR [${e?.code || 'no-code'}]: ${e?.message || 'unknown'}`;
+      const msg = e?.code === 'permission-denied'
+        ? 'Permission denied saving application. Please try again or email hello@onlybuddy.co.uk'
+        : e?.message || 'Something went wrong. Please try again or email hello@onlybuddy.co.uk';
       setError(msg);
     } finally {
       setSubmitting(false);

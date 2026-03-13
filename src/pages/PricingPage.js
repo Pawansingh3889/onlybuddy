@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
 
 const SERVICES = [
+  { icon:'⚡', name:'Quick Errand', tag:'NEW', tagColor:'#D97706', model:'£1 · £2 · £3', detail:'Same building to 500m', color:'#F59E0B',
+    howItWorks:'Starts at £1 for same-building requests (up to 50m). £2 for the same street (up to 200m). £3 for up to 500m away. Perfect for water, chargers, anything nearby. No minimum basket, no distance faff.' },
   { icon:'🛒', name:'Grocery Run',      tag:'Most Popular', tagColor:'#059669', model:'15% of basket', detail:'Minimum £4.99', color:'#059669',
     howItWorks:'You pay the shop directly. We charge 15% of your basket as our service fee (min £4.99). A £40 shop = £6.00 service fee.',
     stores:['Morrisons','Tesco','Asda','Sainsbury\'s','Aldi','Lidl','Co-op','Local shops'] },
@@ -17,6 +19,8 @@ const SERVICES = [
 ];
 
 const EXAMPLES = [
+  { label:'Water from kitchen (same building)', breakdown:['Quick Errand — same building: £1.00'], fee:1.00, note:"Hull's cheapest errand" },
+  { label:'Charger from friend down the street', breakdown:['Quick Errand — same street: £2.00'], fee:2.00, note:'Saves you a 10-min walk' },
   { label:'Weekly Tesco shop (£65)', breakdown:['Basket (paid direct): £65.00','Service fee (15%): £9.75'], fee:9.75, note:'More flexible than a delivery slot' },
   { label:'Boots prescription pickup', breakdown:['Prescription (paid direct): varies','OnlyBuddy flat fee: £6.99'], fee:6.99, note:'Saves you 30–45 min' },
   { label:'ASOS return (0.8 miles)', breakdown:['Under 2 miles flat fee: £6.99'], fee:6.99, note:'Never miss a return deadline' },
@@ -32,6 +36,7 @@ const FAQ = [
   ['Are there hidden fees?','None. No surge pricing, no item markups, no automatic tips.'],
   ['Can I tip my Buddy?','Yes — 100% goes to your Buddy instantly. We take nothing.'],
   ['What areas do you cover?','All Hull postcodes HU1–HU17.'],
+  ['Can I really pay £1 for an errand?','Yes! Quick Errands start at £1 for same-building requests — grabbing something from the next room, kitchen, or floor. £2 for the same street, £3 for up to 500m away.'],
 ];
 
 export default function PricingPage() {

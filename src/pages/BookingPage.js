@@ -18,12 +18,21 @@ const PRICING = {
 // ─────────────────────────────────────────────────────────────
 
 const ERRAND_TYPES = [
-  { id:'grocery',  icon:'🛒', label:'Grocery Run',      color:'#059669', pricing:'15% of basket (min £4.99)',  type:'grocery' },
+  { id:'quick',    icon:'⚡', label:'Quick Errand',      color:'#F59E0B', pricing:'£1 · £2 · £3 by distance',  type:'quick', badge:'NEW' },
+  { id:'grocery',  icon:'🛒', label:'Grocery Run',       color:'#059669', pricing:'15% of basket (min £4.99)',  type:'grocery', badge:'Popular' },
   { id:'buy',      icon:'🛍️', label:'Buy & Deliver',    color:'#7C3AED', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
-  { id:'queue',    icon:'⏳', label:'Queue for Me',      color:'#D97706', pricing:'£8.00/hr · min 30 min',      type:'hourly' },
-  { id:'parcel',   icon:'📦', label:'Parcel & Returns', color:'#2563EB', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
-  { id:'pharmacy', icon:'💊', label:'Prescription Run', color:'#DB2777', pricing:'£6.99 flat — all of Hull',   type:'flat', fee:PRICING.PRESCRIPTION_FLAT },
+  { id:'queue',    icon:'⏳', label:'Queue for Me',       color:'#D97706', pricing:'£8.00/hr · min 30 min',      type:'hourly' },
+  { id:'parcel',   icon:'📦', label:'Parcel & Returns',  color:'#2563EB', pricing:'£6.99 / £9.99 by distance',  type:'distance' },
+  { id:'pharmacy', icon:'💊', label:'Prescription Run',  color:'#DB2777', pricing:'£6.99 flat — all of Hull',   type:'flat', fee:PRICING.PRESCRIPTION_FLAT },
 ];
+
+const QUICK_DISTANCES = [
+  { id:'room',   label:'Same building / next room', sublabel:'Up to 50m',  fee: 1.00, emoji:'🚶' },
+  { id:'street', label:'Same street',               sublabel:'Up to 200m', fee: 2.00, emoji:'🚶' },
+  { id:'nearby', label:'Nearby — around the corner',sublabel:'Up to 500m', fee: 3.00, emoji:'🚴' },
+];
+
+const calcQuickFee = (distId) => QUICK_DISTANCES.find(d => d.id === distId)?.fee || 1.00;
 
 const HULL_STORES = [
   { id:'morrisons',  icon:'🟡', name:"Morrisons" },
@@ -101,9 +110,14 @@ export default function BookingPage() {
   const [pharmacyName, setPharmacyName] = useState('');
   const [scriptType, setScriptType] = useState('nhs');
 
+  // ── Quick Errand state ──
+  const [quickDist, setQuickDist] = useState('room');
+  const [quickTask, setQuickTask] = useState('');
+
   // ─── Fee calculation ───────────────────────────────────
   const calcFee = () => {
     if (!errand) return 0;
+    if (errand.type === 'quick')   return calcQuickFee(quickDist);
     if (errand.type === 'grocery') {
       const est = parseFloat(basketEstimate) || 0;
       return est > 0 ? calcGroceryFee(est) : 4.99;
@@ -141,6 +155,7 @@ export default function BookingPage() {
   const validateStep1 = () => {
     if (!address.trim())  { setError('Please enter your delivery address'); return false; }
     if (!postcode.trim()) { setError('Please enter your postcode'); return false; }
+    if (errand?.type === 'quick' && !quickTask.trim()) { setError('Please describe what you need'); return false; }
     if (errand?.type === 'grocery') {
       if (!store) { setError('Please select a store'); return false; }
       if (items.filter(i => i.name.trim()).length === 0) { setError('Please add at least one item'); return false; }
@@ -179,6 +194,11 @@ export default function BookingPage() {
         pharmacyName, scriptType,
       } : {};
 
+      const quickData = errand?.type === 'quick' ? {
+        quickTask, quickDist,
+        quickDistLabel: QUICK_DISTANCES.find(d => d.id === quickDist)?.label,
+      } : {};
+
       const docRef = await addDoc(collection(db, 'orders'), {
         errandType: errand.label,
         errandId: errand.id,
@@ -197,6 +217,7 @@ export default function BookingPage() {
         ...buyData,
         ...parcelData,
         ...pharmacyData,
+        ...quickData,
         createdAt: serverTimestamp(),
       });
       setOrderId(docRef.id);
@@ -481,10 +502,13 @@ export default function BookingPage() {
             <div style={{ fontSize:12, fontWeight:700, color:theme.muted, textTransform:'uppercase', letterSpacing:0.5, marginBottom:14 }}>What do you need?</div>
             <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:24 }}>
               {ERRAND_TYPES.map(e=>(
-                <button key={e.id} onClick={()=>{setErrand(e);setStep(1);setError('');}} style={{ display:'flex', alignItems:'center', gap:16, padding:'16px 20px', background:theme.card, border:`1.5px solid ${errand?.id===e.id?e.color:theme.border}`, borderRadius:16, cursor:'pointer', textAlign:'left', transition:'all 0.15s', fontFamily:"'Inter',sans-serif", borderLeft:`4px solid ${e.color}` }}>
+                <button key={e.id} onClick={()=>{setErrand(e);setStep(1);setError('');}} style={{ display:'flex', alignItems:'center', gap:16, padding:'16px 20px', background: e.id==='quick' ? (isDark?'#1C1507':'#FFFBEB') : theme.card, border:`1.5px solid ${errand?.id===e.id?e.color: e.id==='quick'?'#FDE68A':theme.border}`, borderRadius:16, cursor:'pointer', textAlign:'left', transition:'all 0.15s', fontFamily:"'Inter',sans-serif", borderLeft:`4px solid ${e.color}` }}>
                   <span style={{ fontSize:30, flexShrink:0 }}>{e.icon}</span>
                   <div style={{ flex:1 }}>
-                    <div style={{ fontSize:16, fontWeight:700, color:theme.text, fontFamily:"'Outfit',sans-serif" }}>{e.label}</div>
+                    <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                      <div style={{ fontSize:16, fontWeight:700, color:theme.text, fontFamily:"'Outfit',sans-serif" }}>{e.label}</div>
+                      {e.badge && <span style={{ fontSize:10, fontWeight:800, color: e.id==='quick'?'#92400E':'#065F46', background: e.id==='quick'?'#FDE68A':'#D1FAE5', padding:'2px 7px', borderRadius:8 }}>{e.badge}</span>}
+                    </div>
                     <div style={{ fontSize:12, color:theme.muted, marginTop:2 }}>{e.pricing}</div>
                   </div>
                   <div style={{ fontSize:18, color:theme.muted }}>→</div>
@@ -516,6 +540,33 @@ export default function BookingPage() {
 
             <div style={{ display:'flex', flexDirection:'column', gap:20 }}>
               {/* Errand-specific form */}
+              {errand.type === 'quick' && (
+                <div>
+                  <div style={{ background:'#FFFBEB', border:'1.5px solid #FDE68A', borderRadius:14, padding:'14px 18px', marginBottom:20, fontSize:13, color:'#92400E', lineHeight:1.6 }}>
+                    ⚡ <strong>Quick Errand</strong> — perfect for grabbing something nearby. A bottle of water, a charger from next door, anything within 500m.
+                  </div>
+                  <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:8, textTransform:'uppercase' }}>What do you need? *</label>
+                  <input className="booking-inp" style={inp} placeholder="e.g. Grab a bottle of water from the kitchen..." value={quickTask} onChange={e => setQuickTask(e.target.value)} />
+                  <label style={{ fontSize:11, fontWeight:700, color:theme.muted, letterSpacing:0.5, display:'block', marginBottom:10, marginTop:20, textTransform:'uppercase' }}>How far is it? *</label>
+                  <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                    {QUICK_DISTANCES.map(d => (
+                      <button key={d.id} onClick={() => setQuickDist(d.id)} style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'14px 18px', borderRadius:14, border:`2px solid ${quickDist===d.id?'#F59E0B':theme.border}`, background:quickDist===d.id?'#FFFBEB':theme.card2, cursor:'pointer', fontFamily:"'Inter',sans-serif", transition:'all 0.15s' }}>
+                        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+                          <span style={{ fontSize:24 }}>{d.emoji}</span>
+                          <div style={{ textAlign:'left' }}>
+                            <div style={{ fontSize:14, fontWeight:700, color:theme.text }}>{d.label}</div>
+                            <div style={{ fontSize:12, color:theme.muted }}>{d.sublabel}</div>
+                          </div>
+                        </div>
+                        <div style={{ fontSize:22, fontWeight:900, color: quickDist===d.id?'#D97706':'#059669', fontFamily:"'Outfit',sans-serif" }}>£{d.fee.toFixed(2)}</div>
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ marginTop:14, background:theme.card2, border:`1px solid #F59E0B33`, borderRadius:10, padding:'10px 14px', fontSize:12, color:theme.muted }}>
+                    ⚡ Quick Errands are meant for small, fast requests within 500m. For longer distances, use Buy &amp; Deliver.
+                  </div>
+                </div>
+              )}
               {errand.type === 'grocery' && <GroceryList />}
               {errand.type === 'hourly'  && <QueueForm />}
               {errand.id   === 'buy'     && <BuyForm />}
@@ -560,6 +611,7 @@ export default function BookingPage() {
                 ['Errand', `${errand.icon} ${errand.label}`],
                 ...(errand.type==='grocery'&&store ? [['Store', HULL_STORES.find(s=>s.id===store)?.name]] : []),
                 ...(errand.type==='grocery' ? [['Items', `${items.filter(i=>i.name.trim()).length} item${items.filter(i=>i.name.trim()).length!==1?'s':''}`]] : []),
+                ...(errand.type==='quick' ? [['Task', quickTask],['Distance', QUICK_DISTANCES.find(d=>d.id===quickDist)?.label||'']] : []),
                 ...(errand.type==='hourly' ? [['Queue at', queueLocation],['Est. time', `${queueMins} min`]] : []),
                 ['Deliver to', `${address}, ${postcode}`],
                 ...(notes ? [['Notes', notes]] : []),
