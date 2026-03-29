@@ -5,10 +5,9 @@
 
 ## STEP 1: Install Dependencies
 
-Open your terminal in VS Code (Ctrl + `)
+Open your terminal in the project directory and run:
 
 ```bash
-cd C:\Projects\OnlyBuddy-App\onlybuddy
 npm install
 ```
 
@@ -161,8 +160,8 @@ const STRIPE_PK = 'pk_live_YOUR_REAL_KEY';
 ```
 
 > **Note:** Full Stripe checkout (taking real money) requires a backend function.
-> This is the next step we'll build — a Vercel serverless function to create
-> Stripe payment intents. Message me when ready!
+> The next step is to build a Vercel serverless function to create
+> Stripe payment intents. See `api/create-payment-intent.js` for the entry point.
 
 ---
 
