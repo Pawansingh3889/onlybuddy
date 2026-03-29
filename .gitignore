@@ -3,3 +3,10 @@ node_modules
 .env
 build
 .DS_Store
+
+# Python / Flask backend
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/instance/
+*.db
