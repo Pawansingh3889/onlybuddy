@@ -29,14 +29,15 @@
 
 ### 6. PAYMENTS (Before real orders)
 - [ ] BookingPage.js → replace pk_test_placeholder with real Stripe key
-- [ ] Build Stripe serverless function (not yet built — next session)
+- [ ] Build Stripe serverless function (see `api/create-payment-intent.js`)
 
 ### 7. DOMAIN
 - [ ] Buy onlybuddy.co.uk and connect in Vercel Settings → Domains
 
 ---
-## Deploy command (Command Prompt only — NOT PowerShell)
-cd C:\Projects\onlybuddy-CLEAN\onlybuddy-clean
+## Deploy command
+```bash
 git add .
-git commit -m "master update"
+git commit -m "update"
 git push
+```

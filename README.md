@@ -1,8 +1,10 @@
 # OnlyBuddy — Hull's Errand & Grocery Sharing App
 
+> **Hackathon Project** — Built to solve a real community problem in Hull, UK.
+
 **Live:** [onlybuddy.vercel.app](https://onlybuddy.vercel.app)
 
-A community-driven web app where neighbours in Hull can post errands, share grocery runs, and help each other out. Built as a real product — not a tutorial project.
+A community-driven web app where neighbours in Hull can post errands, share grocery runs, and help each other out.
 
 ---
 
@@ -60,6 +62,6 @@ npm run dev
 
 ---
 
-## Why I Built This
+## The Problem We're Solving
 
-I moved to Hull in 2024 and noticed there was no easy way for neighbours to help each other with quick errands. Instead of waiting for someone else to build it, I built it myself — from auth flows to payment integration to deployment.
+Hull residents — especially the elderly, busy parents, and students — often need help with small errands like grocery runs, prescription pickups, and parcel returns. Existing delivery apps don't cover these hyperlocal, low-cost tasks. OnlyBuddy connects people who need help with trusted local "Buddies" who can earn money helping their community.
